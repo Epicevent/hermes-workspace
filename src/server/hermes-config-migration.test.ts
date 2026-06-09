@@ -71,4 +71,44 @@ describe('normalizeHermesConfigState', () => {
       source: 'nested',
     })
   })
+
+  it('reports Google Gemini as configured from GOOGLE_API_KEY', () => {
+    const state = normalizeHermesConfigState({
+      paths,
+      config: { model: { provider: 'google', default: 'gemini-2.5-flash' } },
+      env: { GOOGLE_API_KEY: 'google-key-123456' },
+      authProfiles: {},
+      localProviders: [],
+      localModels: [],
+    })
+
+    expect(state.activeProvider).toBe('google')
+    expect(state.activeModel).toBe('gemini-2.5-flash')
+    const google = state.providers.find((p) => p.id === 'google')
+    expect(google?.configured).toBe(true)
+    expect(google?.authenticated).toBe(true)
+    expect(google?.available).toBe(true)
+    expect(google?.isDefault).toBe(true)
+    expect(google?.authSource).toBe('env')
+    expect(google?.envKeys).toEqual(['GOOGLE_API_KEY', 'GEMINI_API_KEY'])
+    expect(google?.maskedCredentials.GOOGLE_API_KEY).toBe('goog...3456')
+    expect(google?.models.map((model) => model.id)).toContain('gemini-2.5-flash')
+  })
+
+  it('accepts GEMINI_API_KEY as a Google Gemini key alias', () => {
+    const state = normalizeHermesConfigState({
+      paths,
+      config: { model: { provider: 'google', default: 'gemini-2.0-flash' } },
+      env: { GEMINI_API_KEY: 'gemini-key-123456' },
+      authProfiles: {},
+      localProviders: [],
+      localModels: [],
+    })
+
+    const google = state.providers.find((p) => p.id === 'google')
+    expect(google?.configured).toBe(true)
+    expect(google?.authenticated).toBe(true)
+    expect(google?.authSource).toBe('env')
+    expect(google?.maskedCredentials.GEMINI_API_KEY).toBe('gemi...3456')
+  })
 })

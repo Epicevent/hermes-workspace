@@ -185,6 +185,14 @@ const PROVIDER_CARDS: Array<{
     envKey: 'ANTHROPIC_API_KEY',
   },
   {
+    id: 'google',
+    name: 'Google Gemini',
+    logo: '',
+    models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+    authType: 'api_key',
+    envKey: 'GOOGLE_API_KEY',
+  },
+  {
     id: 'nous',
     name: 'Nous Portal',
     logo: '/providers/nous.png',
