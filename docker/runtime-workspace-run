@@ -1,0 +1,13 @@
+#!/command/with-contenv sh
+set -eu
+
+cd /opt/hermes-workspace
+
+export NODE_ENV="${NODE_ENV:-production}"
+export PORT="${PORT:-3000}"
+export HOST="${HOST:-0.0.0.0}"
+export HERMES_API_URL="${HERMES_API_URL:-http://127.0.0.1:8642}"
+export HERMES_DASHBOARD_URL="${HERMES_DASHBOARD_URL:-http://127.0.0.1:9119}"
+export HERMES_WORKSPACE_DIR="${HERMES_WORKSPACE_DIR:-/workspace}"
+
+exec s6-setuidgid hermes node --max-old-space-size="${NODE_MAX_OLD_SPACE_SIZE:-2048}" server-entry.js

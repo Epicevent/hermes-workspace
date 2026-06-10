@@ -22,6 +22,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  RUNTIME_IMAGE_NAME: ${{ github.repository_owner }}/hermes-runtime
 
 jobs:
   build-and-push:
@@ -48,6 +49,19 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,prefix=main-,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Extract runtime image metadata
+        id: runtime_meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.RUNTIME_IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
@@ -96,6 +110,51 @@ jobs:
           echo "Container did not become ready before timeout"
           exit 1
 
+      - name: Build smoke-test runtime image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.runtime
+          load: true
+          tags: hermes-runtime:smoke
+          build-args: |
+            HERMES_WORKSPACE_GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+
+      - name: Smoke test runtime image contract
+        run: |
+          set -euo pipefail
+
+          cid=$(docker run -d \
+            -p 127.0.0.1:3000:3000 \
+            -e API_SERVER_KEY=ci-smoke-api-server-key \
+            -e HERMES_API_TOKEN=ci-smoke-api-server-key \
+            -e HERMES_PASSWORD=ci-smoke-test-password \
+            hermes-runtime:smoke)
+          trap 'docker logs "$cid" || true; docker rm -f "$cid" || true' EXIT
+
+          for _ in $(seq 1 90); do
+            status=$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' "$cid")
+            case "$status" in
+              exited*)
+                echo "Runtime container exited before becoming healthy: $status"
+                exit 1
+                ;;
+            esac
+
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null \
+              && docker exec "$cid" curl -fsS http://127.0.0.1:8642/health >/dev/null \
+              && docker exec "$cid" curl -fsS http://127.0.0.1:9119/api/status >/dev/null; then
+              echo "Runtime image served workspace, gateway, and dashboard successfully"
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Runtime image contract did not become ready before timeout"
+          exit 1
+
       - name: Build & push
         uses: docker/build-push-action@v5
         with:
@@ -105,5 +164,19 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push runtime
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.runtime_meta.outputs.tags }}
+          labels: ${{ steps.runtime_meta.outputs.labels }}
+          build-args: |
+            HERMES_WORKSPACE_GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
