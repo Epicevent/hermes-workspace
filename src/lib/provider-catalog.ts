@@ -6,10 +6,12 @@ export type ProviderInfo = {
   description: string
   authTypes: Array<ProviderAuthType>
   docsUrl: string
+  apiKeyEnv?: string
   configExample: string
 }
 
 export const CLAUDE_CONFIG_PATH = '~/.hermes/config.yaml'
+export const HERMES_ENV_PATH = '~/.hermes/.env'
 
 export const PROVIDER_CATALOG: Array<ProviderInfo> = [
   {
@@ -18,6 +20,7 @@ export const PROVIDER_CATALOG: Array<ProviderInfo> = [
     description: 'Claude models — Haiku, Sonnet, and Opus.',
     authTypes: ['api-key', 'cli-token'],
     docsUrl: 'https://console.anthropic.com/settings/keys',
+    apiKeyEnv: 'ANTHROPIC_API_KEY',
     configExample: JSON.stringify(
       {
         auth: {
@@ -39,6 +42,7 @@ export const PROVIDER_CATALOG: Array<ProviderInfo> = [
     description: 'GPT and reasoning models for chat and tools.',
     authTypes: ['api-key'],
     docsUrl: 'https://platform.openai.com/api-keys',
+    apiKeyEnv: 'OPENAI_API_KEY',
     configExample: JSON.stringify(
       {
         auth: {
@@ -60,6 +64,7 @@ export const PROVIDER_CATALOG: Array<ProviderInfo> = [
     description: 'Gemini models with API key or OAuth.',
     authTypes: ['api-key', 'oauth'],
     docsUrl: 'https://aistudio.google.com/app/apikey',
+    apiKeyEnv: 'GOOGLE_API_KEY',
     configExample: JSON.stringify(
       {
         auth: {
@@ -81,6 +86,7 @@ export const PROVIDER_CATALOG: Array<ProviderInfo> = [
     description: 'Unified access to many providers through one API.',
     authTypes: ['api-key'],
     docsUrl: 'https://openrouter.ai/keys',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
     configExample: JSON.stringify(
       {
         auth: {
@@ -102,6 +108,7 @@ export const PROVIDER_CATALOG: Array<ProviderInfo> = [
     description: 'MiniMax foundation models and multimodal APIs.',
     authTypes: ['api-key'],
     docsUrl: 'https://www.minimax.io/platform',
+    apiKeyEnv: 'MINIMAX_API_KEY',
     configExample: JSON.stringify(
       {
         auth: {
@@ -194,12 +201,23 @@ export function getAuthTypeLabel(authType: ProviderAuthType): string {
   return 'Local'
 }
 
+export function getProviderApiKeyEnv(providerId: string): string {
+  const provider = getProviderInfo(providerId)
+  if (provider?.apiKeyEnv) return provider.apiKeyEnv
+  const normalized = normalizeProviderId(providerId)
+  return `${normalized.replace(/[^a-z0-9]+/g, '_').toUpperCase()}_API_KEY`
+}
+
 export function buildConfigExample(
   provider: ProviderInfo,
   authType: ProviderAuthType,
 ): string {
   const profileKey =
     authType === 'local' ? `${provider.id}:local` : `${provider.id}:default`
+
+  if (authType === 'api-key' && provider.apiKeyEnv) {
+    return `${provider.apiKeyEnv}=your-key-here`
+  }
 
   if (authType === 'oauth') {
     return JSON.stringify(

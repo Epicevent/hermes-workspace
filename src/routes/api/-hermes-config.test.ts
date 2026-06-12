@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import YAML from 'yaml'
 import { ensureGatewayProbed } from '../../server/gateway-capabilities'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -146,6 +147,93 @@ describe('canonical /api/hermes-config route', () => {
     const onDisk = fs.readFileSync(path.join(tmpHome, 'config.yaml'), 'utf-8')
     expect(onDisk).toContain('memory_enabled: true')
     expect(onDisk).toContain('user_profile_enabled: true')
+  })
+
+  it('POST /api/config-patch writes API keys through the action body', async () => {
+    const handlers = await loadHandlers('./config-patch')
+    const res = await handlers.POST({
+      request: new Request('http://localhost/api/config-patch', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'set-api-key',
+          envKey: 'GOOGLE_API_KEY',
+          value: 'google-key-1234',
+        }),
+      }),
+    })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body).toMatchObject({ ok: true, message: 'API key saved.' })
+    expect(fs.readFileSync(path.join(tmpHome, '.env'), 'utf-8')).toContain(
+      'GOOGLE_API_KEY=google-key-1234',
+    )
+  })
+
+  it('POST /api/config-patch applies path/value settings from the settings screen', async () => {
+    const handlers = await loadHandlers('./config-patch')
+    const res = await handlers.POST({
+      request: new Request('http://localhost/api/config-patch', {
+        method: 'POST',
+        body: JSON.stringify({
+          path: 'agents.defaults.contextTokens',
+          value: 120000,
+        }),
+      }),
+    })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    const parsed = YAML.parse(
+      fs.readFileSync(path.join(tmpHome, 'config.yaml'), 'utf-8'),
+    )
+    expect(parsed.agents.defaults.contextTokens).toBe(120000)
+  })
+
+  it('PATCH accepts raw JSON config patches from older provider wizard clients', async () => {
+    const handlers = await loadHandlers('./hermes-config')
+    const res = await handlers.PATCH({
+      request: new Request('http://localhost/api/hermes-config', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          raw: JSON.stringify({
+            auth: {
+              profiles: {
+                'google:default': {
+                  provider: 'google',
+                  apiKey: 'google-key-1234',
+                },
+              },
+            },
+          }),
+          reason: 'test raw patch',
+        }),
+      }),
+    })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    const parsed = YAML.parse(
+      fs.readFileSync(path.join(tmpHome, 'config.yaml'), 'utf-8'),
+    )
+    expect(parsed.auth.profiles['google:default']).toMatchObject({
+      provider: 'google',
+      apiKey: 'google-key-1234',
+    })
+  })
+
+  it('PATCH rejects unsupported no-op payloads instead of silently succeeding', async () => {
+    const handlers = await loadHandlers('./hermes-config')
+    const res = await handlers.PATCH({
+      request: new Request('http://localhost/api/hermes-config', {
+        method: 'PATCH',
+        body: JSON.stringify({ rawConfig: '{}', note: 'unknown shape' }),
+      }),
+    })
+
+    expect(res.status).toBe(400)
   })
 
   it('PATCH rejects malformed action bodies with 400', async () => {

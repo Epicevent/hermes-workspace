@@ -159,6 +159,7 @@ const PROVIDER_CARDS: Array<{
   models: Array<string>
   authType: 'oauth' | 'api_key' | 'none'
   envKey?: string
+  envKeyAliases?: Array<string>
 }> = [
   // Local providers first — zero setup
   {
@@ -191,6 +192,7 @@ const PROVIDER_CARDS: Array<{
     models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
     authType: 'api_key',
     envKey: 'GOOGLE_API_KEY',
+    envKeyAliases: ['GEMINI_API_KEY'],
   },
   {
     id: 'nous',
@@ -253,6 +255,35 @@ const PROVIDER_CARDS: Array<{
   },
   { id: 'custom', name: 'Custom', logo: '', models: [], authType: 'api_key', envKey: 'CUSTOM_API_KEY' },
 ]
+
+function providerApiKeyNames(provider: (typeof PROVIDER_CARDS)[number]): Array<string> {
+  return [provider.envKey, ...(provider.envKeyAliases || [])].filter(
+    (key): key is string => Boolean(key),
+  )
+}
+
+function configuredProviderApiKey(
+  provider: (typeof PROVIDER_CARDS)[number],
+  configuredKeys: Record<string, string>,
+): string | null {
+  return (
+    providerApiKeyNames(provider).find((key) => Boolean(configuredKeys[key])) ||
+    null
+  )
+}
+
+function readConfiguredKeysFromProviders(providers: Array<any>): Record<string, string> {
+  const keys: Record<string, string> = {}
+  for (const provider of providers || []) {
+    if (!provider.configured) continue
+    for (const envKey of provider.envKeys || []) {
+      if (provider.maskedCredentials?.[envKey]) {
+        keys[envKey] = provider.maskedCredentials[envKey]
+      }
+    }
+  }
+  return keys
+}
 
 export type ProviderClickAction = 'select' | 'oauth' | 'local' | 'custom' | 'ignore'
 
@@ -394,14 +425,7 @@ function HermesContent() {
         const mem = (d.config?.memory as Record<string, unknown>) || {}
         setMemEnabled(mem.memory_enabled !== false)
         setUserProfileEnabled(mem.user_profile_enabled !== false)
-        // Build configured keys map
-        const keys: Record<string, string> = {}
-        for (const p of d.providers || []) {
-          const envKey = p.envKeys?.[0]
-          if (!p.configured || !envKey) continue
-          keys[envKey] = p.maskedCredentials?.[envKey] || '••••'
-        }
-        setConfiguredKeys(keys)
+        setConfiguredKeys(readConfiguredKeysFromProviders(d.providers || []))
         // Load custom provider config (may be stored as 'custom' or legacy 'manifest')
         const cfgProviders = (d.config?.providers as Record<string, any>) || {}
         const customCfg = cfgProviders['custom'] || cfgProviders['manifest'] || {}
@@ -424,13 +448,7 @@ function HermesContent() {
     ) {
       setCustomModel(d.activeModel)
     }
-    const keys: Record<string, string> = {}
-    for (const p of d.providers || []) {
-      const envKey = p.envKeys?.[0]
-      if (!p.configured || !envKey) continue
-      keys[envKey] = p.maskedCredentials?.[envKey] || '••••'
-    }
-    setConfiguredKeys(keys)
+    setConfiguredKeys(readConfiguredKeysFromProviders(d.providers || []))
   }
 
   const save = async (
@@ -671,8 +689,7 @@ function HermesContent() {
             const verified =
               (p.authType === 'none' && localOnline) ||
               (p.authType === 'api_key' &&
-                !!p.envKey &&
-                !!configuredKeys[p.envKey])
+                !!configuredProviderApiKey(p, configuredKeys))
             const missingKey =
               p.authType === 'api_key' && !verified && p.id !== 'custom'
             // hasKey gates click — keep OAuth + local clickable (existing
@@ -1112,7 +1129,8 @@ function HermesContent() {
         <div className="space-y-1.5">
           {PROVIDER_CARDS.filter((p) => p.envKey).map((p) => {
             const key = p.envKey!
-            const hasKey = !!configuredKeys[key]
+            const configuredKey = configuredProviderApiKey(p, configuredKeys)
+            const hasKey = Boolean(configuredKey)
             const isEditing = editingKey === key
             return (
               <div
@@ -1149,8 +1167,8 @@ function HermesContent() {
                           }
                         }}
                       />
-                    ) : hasKey ? (
-                      configuredKeys[key]
+                    ) : configuredKey ? (
+                      configuredKeys[configuredKey]
                     ) : (
                       'Not configured'
                     )}

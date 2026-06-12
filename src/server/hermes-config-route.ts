@@ -30,6 +30,11 @@ const ACTION_MESSAGES: Record<string, string> = {
 }
 
 const LEGACY_SAVE_MESSAGE = 'Saved.'
+const RESERVED_CONFIG_PATH_SEGMENTS = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+])
 
 const PatchActionSchema = z.discriminatedUnion('action', [
   z.object({
@@ -61,10 +66,26 @@ const PatchActionSchema = z.discriminatedUnion('action', [
   }),
 ])
 
-const LegacyPatchSchema = z.object({
-  config: z.record(z.string(), z.unknown()).optional(),
-  env: z.record(z.string(), z.union([z.string(), z.null()])).optional(),
-})
+const RawConfigPatchSchema = z
+  .object({
+    raw: z.string().min(1),
+    reason: z.string().optional(),
+  })
+  .strict()
+
+const PathValuePatchSchema = z
+  .object({
+    path: z.string().min(1),
+    value: z.unknown(),
+  })
+  .strict()
+
+const LegacyPatchSchema = z
+  .object({
+    config: z.record(z.string(), z.unknown()).optional(),
+    env: z.record(z.string(), z.union([z.string(), z.null()])).optional(),
+  })
+  .strict()
 
 async function authorize(request: Request): Promise<AuthResult> {
   if (!isAuthenticated(request)) {
@@ -108,18 +129,42 @@ export async function handleHermesConfigGet({
   })
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function readConfigObject(configPath: string): Record<string, unknown> {
+  try {
+    const raw = fs.readFileSync(configPath, 'utf-8')
+    const parsed = YAML.parse(raw)
+    if (isPlainRecord(parsed)) return parsed
+  } catch {}
+  return {}
+}
+
+function writeConfigObject(
+  configPath: string,
+  config: Record<string, unknown>,
+): void {
+  fs.mkdirSync(path.dirname(configPath), { recursive: true })
+  fs.writeFileSync(configPath, YAML.stringify(config), 'utf-8')
+}
+
+function assertSafeConfigPathSegment(segment: string): void {
+  if (!segment || RESERVED_CONFIG_PATH_SEGMENTS.has(segment)) {
+    throw new Error(`Invalid config path segment: ${segment || '<empty>'}`)
+  }
+}
+
 function deepMerge(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
 ): void {
   for (const [key, value] of Object.entries(source)) {
+    assertSafeConfigPathSegment(key)
     if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      target[key] &&
-      typeof target[key] === 'object' &&
-      !Array.isArray(target[key])
+      isPlainRecord(value) &&
+      isPlainRecord(target[key])
     ) {
       deepMerge(
         target[key] as Record<string, unknown>,
@@ -135,24 +180,50 @@ function applyLegacyConfigBody(
   configPath: string,
   updates: Record<string, unknown>,
 ): void {
-  let current: Record<string, unknown> = {}
-  try {
-    const raw = fs.readFileSync(configPath, 'utf-8')
-    const parsed = YAML.parse(raw)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      current = parsed as Record<string, unknown>
-    }
-  } catch {}
+  const current = readConfigObject(configPath)
 
   for (const [key, value] of Object.entries(updates)) {
+    assertSafeConfigPathSegment(key)
     if (value === null) {
       delete current[key]
       delete updates[key]
     }
   }
   deepMerge(current, updates)
-  fs.mkdirSync(path.dirname(configPath), { recursive: true })
-  fs.writeFileSync(configPath, YAML.stringify(current), 'utf-8')
+  writeConfigObject(configPath, current)
+}
+
+function applyRawConfigBody(configPath: string, raw: string): void {
+  const parsed = JSON.parse(raw) as unknown
+  if (!isPlainRecord(parsed)) {
+    throw new Error('raw config patch must be a JSON object')
+  }
+  applyLegacyConfigBody(configPath, parsed)
+}
+
+function applyPathValueBody(
+  configPath: string,
+  keyPath: string,
+  value: unknown,
+): void {
+  const parts = keyPath.split('.').map((part) => part.trim()).filter(Boolean)
+  if (parts.length === 0) throw new Error('config path is empty')
+
+  const current = readConfigObject(configPath)
+  let cursor: Record<string, unknown> = current
+
+  for (const segment of parts.slice(0, -1)) {
+    assertSafeConfigPathSegment(segment)
+    if (!isPlainRecord(cursor[segment])) cursor[segment] = {}
+    cursor = cursor[segment] as Record<string, unknown>
+  }
+
+  const leaf = parts[parts.length - 1]
+  assertSafeConfigPathSegment(leaf)
+  if (value === null) delete cursor[leaf]
+  else cursor[leaf] = value
+
+  writeConfigObject(configPath, current)
 }
 
 function applyLegacyEnvBody(
@@ -205,10 +276,49 @@ export async function handleHermesConfigPatch({
     return Response.json({ ...result, message: ACTION_MESSAGES[parsed.data.action] })
   }
 
+  const rawPatch = RawConfigPatchSchema.safeParse(body)
+  if (rawPatch.success) {
+    try {
+      applyRawConfigBody(paths.configPath, rawPatch.data.raw)
+      return Response.json({ ok: true, message: LEGACY_SAVE_MESSAGE })
+    } catch (error) {
+      return Response.json(
+        {
+          ok: false,
+          error: error instanceof Error ? error.message : 'Invalid raw config patch',
+        },
+        { status: 400 },
+      )
+    }
+  }
+
+  const pathPatch = PathValuePatchSchema.safeParse(body)
+  if (pathPatch.success) {
+    try {
+      applyPathValueBody(paths.configPath, pathPatch.data.path, pathPatch.data.value)
+      return Response.json({ ok: true, message: LEGACY_SAVE_MESSAGE })
+    } catch (error) {
+      return Response.json(
+        {
+          ok: false,
+          error: error instanceof Error ? error.message : 'Invalid config path patch',
+        },
+        { status: 400 },
+      )
+    }
+  }
+
   const legacy = LegacyPatchSchema.safeParse(body)
   if (!legacy.success) {
     return Response.json(
       { ok: false, error: 'Invalid request body', issues: legacy.error.issues },
+      { status: 400 },
+    )
+  }
+
+  if (!legacy.data.config && !legacy.data.env) {
+    return Response.json(
+      { ok: false, error: 'Invalid request body: no supported patch fields' },
       { status: 400 },
     )
   }

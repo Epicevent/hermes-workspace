@@ -21,6 +21,7 @@ import { toast } from '@/components/ui/toast'
 import { getUnavailableReason } from '@/lib/feature-gates'
 import { useFeatureAvailable } from '@/hooks/use-feature-available'
 import {
+  getProviderApiKeyEnv,
   getProviderDisplayName,
   getProviderInfo,
   normalizeProviderId,
@@ -1547,12 +1548,13 @@ export function ProvidersScreen({ embedded = false }: ProvidersScreenProps) {
 
     setDeletingId(provider.id)
     try {
+      const envKey = getProviderApiKeyEnv(provider.id)
       const res = await fetch('/api/claude-config', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          action: 'remove-provider',
-          provider: provider.id,
+          action: 'remove-api-key',
+          envKey,
         }),
       })
       const data = (await res.json()) as { ok: boolean; error?: string }

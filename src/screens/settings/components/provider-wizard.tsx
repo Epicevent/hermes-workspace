@@ -11,10 +11,12 @@ import { ProviderIcon } from './provider-icon'
 import type { ProviderAuthType } from '@/lib/provider-catalog'
 import {
   CLAUDE_CONFIG_PATH,
+  HERMES_ENV_PATH,
   PROVIDER_CATALOG,
   buildConfigExample,
   getAuthTypeLabel,
   getProviderInfo,
+  getProviderApiKeyEnv,
 } from '@/lib/provider-catalog'
 import { writeTextToClipboard } from '@/lib/clipboard'
 import { Button } from '@/components/ui/button'
@@ -239,23 +241,13 @@ export function ProviderWizard({
     setSaveState('saving')
     setSaveError('')
 
-    const profileKey = `${selectedProvider.id}:default`
-    const patch = {
-      auth: {
-        profiles: {
-          [profileKey]: {
-            provider: selectedProvider.id,
-            apiKey: apiKeyInput.trim(),
-          },
-        },
-      },
-    }
-
     const providerName = selectedProvider.name
     const providerId = selectedProvider.id
+    const envKey = getProviderApiKeyEnv(providerId)
     const patchBody = JSON.stringify({
-      raw: JSON.stringify(patch, null, 2),
-      reason: `Studio: add ${providerName} API key`,
+      action: 'set-api-key',
+      envKey,
+      value: apiKeyInput.trim(),
     })
 
     async function saveConfigAndRestart() {
@@ -483,7 +475,11 @@ export function ProviderWizard({
                 <div className="mt-3 rounded-xl border border-primary-200 bg-primary-100/70 px-3 py-2">
                   <p className="text-xs text-primary-700 text-pretty">
                     Config file path:{' '}
-                    <code className="font-mono">{CLAUDE_CONFIG_PATH}</code>
+                    <code className="font-mono">
+                      {selectedAuthType === 'api-key'
+                        ? HERMES_ENV_PATH
+                        : CLAUDE_CONFIG_PATH}
+                    </code>
                   </p>
                 </div>
 
@@ -745,7 +741,7 @@ export function ProviderWizard({
                     <div className="mt-4 rounded-xl border border-primary-200 bg-primary-100/70 px-3 py-2">
                       <p className="text-xs text-primary-700 text-pretty">
                         API keys are stored locally in{' '}
-                        <code className="font-mono">{CLAUDE_CONFIG_PATH}</code>,
+                        <code className="font-mono">{HERMES_ENV_PATH}</code>,
                         never sent to Studio.
                       </p>
                     </div>
