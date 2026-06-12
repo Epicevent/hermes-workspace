@@ -112,4 +112,21 @@ describe('normalizeHermesConfigState', () => {
     expect(google?.authSource).toBe('env')
     expect(google?.maskedCredentials.GEMINI_API_KEY).toBe('gemi...3456')
   })
+
+  it('aliases gemini provider config to the Google Gemini card', () => {
+    const state = normalizeHermesConfigState({
+      paths,
+      config: { model: { provider: 'gemini', default: 'gemini-3.1-pro-preview' } },
+      env: { GEMINI_API_KEY: 'gemini-key-123456' },
+      authProfiles: {},
+      localProviders: [],
+      localModels: [],
+    })
+
+    expect(state.activeProvider).toBe('google')
+    expect(state.activeModel).toBe('gemini-3.1-pro-preview')
+    const google = state.providers.find((p) => p.id === 'google')
+    expect(google?.configured).toBe(true)
+    expect(google?.isDefault).toBe(true)
+  })
 })

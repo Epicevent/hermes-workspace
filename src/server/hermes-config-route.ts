@@ -4,10 +4,23 @@ import YAML from 'yaml'
 import { z } from 'zod'
 
 import { isAuthenticated } from './auth-middleware'
-import { ensureGatewayProbed } from './gateway-capabilities'
-import { normalizeHermesConfigState } from './hermes-config-migration'
+import {
+  deleteEnvVar,
+  getConfig,
+  getEnvVars,
+  saveConfig,
+  setEnvVar,
+} from './claude-dashboard-api'
+import { dashboardFetch, ensureGatewayProbed } from './gateway-capabilities'
+import {
+  HERMES_PROVIDER_CATALOG,
+  normalizeHermesConfigState,
+  normalizeHermesProviderId,
+} from './hermes-config-migration'
 import {
   applyHermesConfigPatch,
+  type HermesConfigPatch,
+  type HermesConfigPatchResult,
   parseEnvFile,
   readHermesConfigFiles,
   resolveHermesConfigPaths,
@@ -35,6 +48,9 @@ const RESERVED_CONFIG_PATH_SEGMENTS = new Set([
   'constructor',
   'prototype',
 ])
+const PROVIDER_ENV_KEYS = Array.from(
+  new Set(HERMES_PROVIDER_CATALOG.flatMap((provider) => provider.envKeys)),
+)
 
 const PatchActionSchema = z.discriminatedUnion('action', [
   z.object({
@@ -94,6 +110,199 @@ async function authorize(request: Request): Promise<AuthResult> {
   return true
 }
 
+function readProcessProviderEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const key of PROVIDER_ENV_KEYS) {
+    const value = process.env[key]
+    if (value) env[key] = value
+  }
+  return env
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function unwrapDashboardConfig(value: unknown): Record<string, unknown> {
+  if (!isPlainRecord(value)) return {}
+  const inner = value.config
+  return isPlainRecord(inner) ? inner : value
+}
+
+function dashboardEnvPlaceholders(value: unknown): Record<string, string> {
+  if (!isPlainRecord(value)) return {}
+  const env: Record<string, string> = {}
+  for (const key of PROVIDER_ENV_KEYS) {
+    const info = value[key]
+    if (!isPlainRecord(info)) continue
+    const isSet =
+      info.has_value === true ||
+      info.is_set === true ||
+      info.set_in_env === true ||
+      info.set_in_file === true ||
+      Boolean(info.masked_value) ||
+      Boolean(info.redacted_value)
+    if (isSet) env[key] = String(info.masked_value || info.redacted_value || 'configured')
+  }
+  return env
+}
+
+async function readDashboardConfigFallback(): Promise<Record<string, unknown>> {
+  try {
+    return unwrapDashboardConfig(await getConfig())
+  } catch {
+    return {}
+  }
+}
+
+async function readDashboardEnvFallback(): Promise<Record<string, string>> {
+  try {
+    return dashboardEnvPlaceholders(await getEnvVars())
+  } catch {
+    return {}
+  }
+}
+
+async function readDashboardModelInfoFallback(): Promise<{
+  provider: string
+  model: string
+} | null> {
+  if (!(await isDashboardConfigAvailable())) return null
+  try {
+    const response = await dashboardFetch('/api/model/info')
+    if (!response.ok) return null
+    const payload = (await response.json()) as unknown
+    if (!isPlainRecord(payload)) return null
+    const provider = normalizeHermesProviderId(
+      readString(payload.provider) ||
+        readString(payload.current_provider) ||
+        readString(payload.currentProvider) ||
+        readString(payload.default_provider) ||
+        readString(payload.defaultProvider) ||
+        readString(payload.model_provider) ||
+        readString(payload.modelProvider),
+    )
+    const model =
+      readString(payload.model) ||
+      readString(payload.current_model) ||
+      readString(payload.currentModel) ||
+      readString(payload.default_model) ||
+      readString(payload.defaultModel)
+    if (!provider || !model) return null
+    return { provider, model }
+  } catch {
+    return null
+  }
+}
+
+async function isDashboardConfigAvailable(): Promise<boolean> {
+  try {
+    const capabilities = await ensureGatewayProbed()
+    return Boolean(capabilities.dashboard?.available)
+  } catch {
+    return false
+  }
+}
+
+async function saveDashboardConfigPatch(config: Record<string, unknown>): Promise<boolean> {
+  if (!(await isDashboardConfigAvailable())) return false
+  try {
+    await saveConfig(config)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hasDefaultModel(config: Record<string, unknown>): boolean {
+  const flatProvider = readString(config.provider)
+  if (typeof config.model === 'string' && config.model.trim() && flatProvider) {
+    return true
+  }
+  if (isPlainRecord(config.model)) {
+    const model = config.model
+    const provider = readString(model.provider) || flatProvider
+    return Boolean(
+      provider &&
+        ((typeof model.default === 'string' && model.default.trim()) ||
+          (typeof model.model === 'string' && model.model.trim())),
+    )
+  }
+  return false
+}
+
+function mergeRuntimeEnv(...sources: Array<Record<string, string>>): Record<string, string> {
+  return Object.assign({}, ...sources)
+}
+
+function withDefaultModel(
+  config: Record<string, unknown>,
+  defaultModel: { provider: string; model: string },
+): Record<string, unknown> {
+  const modelConfig = isPlainRecord(config.model) ? config.model : {}
+  return {
+    ...config,
+    provider: defaultModel.provider,
+    model: {
+      ...modelConfig,
+      provider: defaultModel.provider,
+      default: defaultModel.model,
+    },
+  }
+}
+
+function nestedConfigPatch(keyPath: string, value: unknown): Record<string, unknown> {
+  const parts = keyPath.split('.').map((part) => part.trim()).filter(Boolean)
+  if (parts.length === 0) throw new Error('config path is empty')
+
+  const root: Record<string, unknown> = {}
+  let cursor = root
+  for (const segment of parts.slice(0, -1)) {
+    assertSafeConfigPathSegment(segment)
+    cursor[segment] = {}
+    cursor = cursor[segment] as Record<string, unknown>
+  }
+  const leaf = parts[parts.length - 1]
+  assertSafeConfigPathSegment(leaf)
+  cursor[leaf] = value
+  return root
+}
+
+async function applyDashboardPatch(
+  patch: HermesConfigPatch,
+): Promise<HermesConfigPatchResult | null> {
+  if (!(await isDashboardConfigAvailable())) return null
+  try {
+    switch (patch.action) {
+      case 'set-default-model':
+      await saveConfig({
+          provider: patch.providerId,
+          model: {
+            provider: patch.providerId,
+            default: patch.modelId,
+          },
+        })
+        return { ok: true }
+      case 'set-api-key':
+        await setEnvVar(patch.envKey, patch.value)
+        process.env[patch.envKey] = patch.value
+        return { ok: true }
+      case 'remove-api-key':
+        await deleteEnvVar(patch.envKey)
+        delete process.env[patch.envKey]
+        return { ok: true }
+      default:
+        return null
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function handleHermesConfigGet({
   request,
 }: {
@@ -107,10 +316,18 @@ export async function handleHermesConfigGet({
   await Promise.resolve(ensureGatewayProbed()).catch(() => undefined)
   await Promise.resolve(ensureDiscovery()).catch(() => undefined)
   const files = readHermesConfigFiles(paths)
+  const dashboardConfig = await readDashboardConfigFallback()
+  const dashboardEnv = await readDashboardEnvFallback()
+  const baseConfig = hasDefaultModel(dashboardConfig) ? dashboardConfig : files.config
+  const modelInfoDefault = hasDefaultModel(baseConfig)
+    ? null
+    : await readDashboardModelInfoFallback()
+  const config = modelInfoDefault ? withDefaultModel(baseConfig, modelInfoDefault) : baseConfig
+  const env = mergeRuntimeEnv(dashboardEnv, readProcessProviderEnv(), files.env)
   const state = normalizeHermesConfigState({
     paths,
-    config: files.config,
-    env: files.env,
+    config,
+    env,
     authProfiles: files.authProfiles,
     localProviders: getDiscoveryStatus(),
     localModels: getDiscoveredModels(),
@@ -127,10 +344,6 @@ export async function handleHermesConfigGet({
     providers,
     claudeHome: paths.hermesHome,
   })
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }
 
 function readConfigObject(configPath: string): Record<string, unknown> {
@@ -272,14 +485,27 @@ export async function handleHermesConfigPatch({
         { status: 400 },
       )
     }
-    const result = applyHermesConfigPatch(paths, parsed.data)
+    const dashboardResult = await applyDashboardPatch(parsed.data)
+    const result = dashboardResult ?? applyHermesConfigPatch(paths, parsed.data)
+    if (parsed.data.action === 'set-api-key' && result.ok) {
+      process.env[parsed.data.envKey] = parsed.data.value
+    }
+    if (parsed.data.action === 'remove-api-key' && result.ok) {
+      delete process.env[parsed.data.envKey]
+    }
     return Response.json({ ...result, message: ACTION_MESSAGES[parsed.data.action] })
   }
 
   const rawPatch = RawConfigPatchSchema.safeParse(body)
   if (rawPatch.success) {
     try {
-      applyRawConfigBody(paths.configPath, rawPatch.data.raw)
+      const parsedRaw = JSON.parse(rawPatch.data.raw) as unknown
+      if (!isPlainRecord(parsedRaw)) {
+        throw new Error('raw config patch must be a JSON object')
+      }
+      if (!(await saveDashboardConfigPatch(parsedRaw))) {
+        applyRawConfigBody(paths.configPath, rawPatch.data.raw)
+      }
       return Response.json({ ok: true, message: LEGACY_SAVE_MESSAGE })
     } catch (error) {
       return Response.json(
@@ -295,7 +521,13 @@ export async function handleHermesConfigPatch({
   const pathPatch = PathValuePatchSchema.safeParse(body)
   if (pathPatch.success) {
     try {
-      applyPathValueBody(paths.configPath, pathPatch.data.path, pathPatch.data.value)
+      if (
+        !(await saveDashboardConfigPatch(
+          nestedConfigPatch(pathPatch.data.path, pathPatch.data.value),
+        ))
+      ) {
+        applyPathValueBody(paths.configPath, pathPatch.data.path, pathPatch.data.value)
+      }
       return Response.json({ ok: true, message: LEGACY_SAVE_MESSAGE })
     } catch (error) {
       return Response.json(
@@ -323,8 +555,33 @@ export async function handleHermesConfigPatch({
     )
   }
 
-  if (legacy.data.config) applyLegacyConfigBody(paths.configPath, legacy.data.config)
-  if (legacy.data.env) applyLegacyEnvBody(paths.envPath, legacy.data.env)
+  if (legacy.data.config) {
+    if (!(await saveDashboardConfigPatch(legacy.data.config))) {
+      applyLegacyConfigBody(paths.configPath, legacy.data.config as Record<string, unknown>)
+    }
+  }
+  if (legacy.data.env) {
+    const envEntries = Object.entries(legacy.data.env)
+    const canUseDashboard = await isDashboardConfigAvailable()
+    let dashboardEnvSaved = canUseDashboard
+    if (canUseDashboard) {
+      for (const [key, value] of envEntries) {
+        try {
+          if (value === '' || value === null) {
+            await deleteEnvVar(key)
+            delete process.env[key]
+          } else {
+            await setEnvVar(key, value)
+            process.env[key] = value
+          }
+        } catch {
+          dashboardEnvSaved = false
+          break
+        }
+      }
+    }
+    if (!dashboardEnvSaved) applyLegacyEnvBody(paths.envPath, legacy.data.env)
+  }
 
   return Response.json({ ok: true, message: LEGACY_SAVE_MESSAGE })
 }

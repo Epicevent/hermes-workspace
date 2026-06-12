@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import YAML from 'yaml'
-import { ensureGatewayProbed } from '../../server/gateway-capabilities'
+import { dashboardFetch, ensureGatewayProbed } from '../../server/gateway-capabilities'
+import { getConfig, getEnvVars } from '../../server/claude-dashboard-api'
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: (_path: string) => (opts: any) => opts,
@@ -14,8 +15,17 @@ vi.mock('../../server/auth-middleware', () => ({
 }))
 
 vi.mock('../../server/gateway-capabilities', () => ({
+  dashboardFetch: vi.fn(),
   ensureGatewayProbed: vi.fn(),
   getCapabilities: () => ({ config: true }),
+}))
+
+vi.mock('../../server/claude-dashboard-api', () => ({
+  getConfig: vi.fn(),
+  getEnvVars: vi.fn(),
+  saveConfig: vi.fn(async () => ({ ok: true })),
+  setEnvVar: vi.fn(async () => ({ ok: true })),
+  deleteEnvVar: vi.fn(async () => ({ ok: true })),
 }))
 
 vi.mock('../../server/local-provider-discovery', () => ({
@@ -40,6 +50,12 @@ beforeEach(() => {
   vi.resetModules()
   vi.mocked(ensureGatewayProbed).mockReset()
   vi.mocked(ensureGatewayProbed).mockResolvedValue({} as any)
+  vi.mocked(dashboardFetch).mockReset()
+  vi.mocked(dashboardFetch).mockRejectedValue(new Error('dashboard unavailable'))
+  vi.mocked(getConfig).mockReset()
+  vi.mocked(getConfig).mockRejectedValue(new Error('dashboard unavailable'))
+  vi.mocked(getEnvVars).mockReset()
+  vi.mocked(getEnvVars).mockRejectedValue(new Error('dashboard unavailable'))
 })
 
 afterEach(() => {
@@ -107,6 +123,83 @@ describe('canonical /api/hermes-config route', () => {
     expect(body.ok).toBe(true)
     expect(body.activeProvider).toBe('google')
     expect(body.activeModel).toBe('gemini-3.1-pro-preview')
+  })
+
+  it('GET merges runtime process env secrets when the mounted env file is unreadable', async () => {
+    setEnv('GEMINI_API_KEY', 'gemini-key-1234')
+    fs.writeFileSync(
+      path.join(tmpHome, 'config.yaml'),
+      'provider: google\nmodel:\n  provider: google\n  default: gemini-3.1-pro-preview\n',
+      'utf-8',
+    )
+
+    const handlers = await loadHandlers('./hermes-config')
+    const res = await handlers.GET({
+      request: new Request('http://localhost/api/hermes-config'),
+    })
+    const body = await res.json()
+
+    const google = body.providers.find((p: any) => p.id === 'google')
+    expect(body.activeProvider).toBe('google')
+    expect(body.activeModel).toBe('gemini-3.1-pro-preview')
+    expect(google.configured).toBe(true)
+    expect(google.maskedCredentials.GEMINI_API_KEY).toBeTruthy()
+  })
+
+  it('GET falls back to dashboard config and aliases gemini to Google', async () => {
+    setEnv('GOOGLE_API_KEY', 'google-key-1234')
+    vi.mocked(ensureGatewayProbed).mockResolvedValue({
+      dashboard: { available: true, url: 'http://127.0.0.1:9119' },
+    } as any)
+    vi.mocked(getConfig).mockResolvedValue({
+      config: {
+        model: {
+          provider: 'gemini',
+          default: 'gemini-3.1-pro-preview',
+        },
+      },
+    })
+    vi.mocked(getEnvVars).mockResolvedValue({})
+
+    const handlers = await loadHandlers('./hermes-config')
+    const res = await handlers.GET({
+      request: new Request('http://localhost/api/hermes-config'),
+    })
+    const body = await res.json()
+
+    const google = body.providers.find((p: any) => p.id === 'google')
+    expect(body.activeProvider).toBe('google')
+    expect(body.activeModel).toBe('gemini-3.1-pro-preview')
+    expect(google.isDefault).toBe(true)
+    expect(google.configured).toBe(true)
+  })
+
+  it('GET falls back to dashboard model info when config omits the default model', async () => {
+    setEnv('GEMINI_API_KEY', 'gemini-key-1234')
+    vi.mocked(ensureGatewayProbed).mockResolvedValue({
+      dashboard: { available: true, url: 'http://127.0.0.1:9119' },
+    } as any)
+    vi.mocked(getConfig).mockResolvedValue({ config: { ui: { theme: 'dark' } } })
+    vi.mocked(getEnvVars).mockResolvedValue({})
+    vi.mocked(dashboardFetch).mockResolvedValue(
+      Response.json({
+        provider: 'gemini',
+        model: 'gemini-3.1-pro-preview',
+      }),
+    )
+
+    const handlers = await loadHandlers('./hermes-config')
+    const res = await handlers.GET({
+      request: new Request('http://localhost/api/hermes-config'),
+    })
+    const body = await res.json()
+
+    const google = body.providers.find((p: any) => p.id === 'google')
+    expect(dashboardFetch).toHaveBeenCalledWith('/api/model/info')
+    expect(body.activeProvider).toBe('google')
+    expect(body.activeModel).toBe('gemini-3.1-pro-preview')
+    expect(google.isDefault).toBe(true)
+    expect(google.configured).toBe(true)
   })
 
   it('PATCH dispatches set-default-model and returns the action message', async () => {

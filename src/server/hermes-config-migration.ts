@@ -115,6 +115,15 @@ export const HERMES_PROVIDER_CATALOG: Array<ProviderDef> = [
 ]
 
 const KNOWN_PROVIDER_IDS = new Set(HERMES_PROVIDER_CATALOG.map((p) => p.id))
+const PROVIDER_ID_ALIASES: Record<string, string> = {
+  gemini: 'google',
+  'google-ai': 'google',
+  google_ai: 'google',
+  'google-gemini': 'google',
+  google_gemini: 'google',
+  'google-generative-ai': 'google',
+  google_generative_ai: 'google',
+}
 
 function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -126,6 +135,11 @@ function readString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+export function normalizeHermesProviderId(value: unknown): string {
+  const normalized = readString(value).toLowerCase()
+  return PROVIDER_ID_ALIASES[normalized] || normalized
+}
+
 function maskSecret(value: string): string {
   if (!value) return ''
   if (value.length < 8) return '***'
@@ -134,13 +148,13 @@ function maskSecret(value: string): string {
 
 function readDefaultModel(config: Record<string, unknown>): HermesConfigState['defaultModel'] {
   const flatModel = readString(config.model)
-  const flatProvider = readString(config.provider)
+  const flatProvider = normalizeHermesProviderId(config.provider)
   if (flatModel && flatProvider) {
     return { provider: flatProvider, model: flatModel, source: 'flat' }
   }
 
   const model = readRecord(config.model)
-  const nestedProvider = readString(model.provider) || flatProvider
+  const nestedProvider = normalizeHermesProviderId(model.provider) || flatProvider
   const nestedModel = readString(model.default) || flatModel
   if (!nestedProvider || !nestedModel) return null
   return { provider: nestedProvider, model: nestedModel, source: 'nested' }

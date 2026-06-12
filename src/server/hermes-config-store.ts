@@ -75,7 +75,11 @@ export function parseEnvFile(raw: string): Record<string, string> {
     if (!trimmed || trimmed.startsWith('#')) continue
     const eqIdx = trimmed.indexOf('=')
     if (eqIdx <= 0) continue
-    const key = trimmed.slice(0, eqIdx).trim()
+    const key = trimmed
+      .slice(0, eqIdx)
+      .trim()
+      .replace(/^export\s+/, '')
+      .trim()
     let value = trimmed.slice(eqIdx + 1).trim()
     if (
       (value.startsWith('"') && value.endsWith('"')) ||

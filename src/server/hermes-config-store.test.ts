@@ -146,6 +146,15 @@ describe('env value round-tripping', () => {
     expect(parseEnvFile(stringifyEnv(env))).toEqual(env)
   })
 
+  it('parses export-prefixed env entries', () => {
+    expect(
+      parseEnvFile("export GEMINI_API_KEY='gemini-key-123456'\nGOOGLE_API_KEY=google-key\n"),
+    ).toEqual({
+      GEMINI_API_KEY: 'gemini-key-123456',
+      GOOGLE_API_KEY: 'google-key',
+    })
+  })
+
   it('refuses to write values containing newlines', () => {
     expect(() => stringifyEnv({ BAD: 'one\ntwo' })).toThrow(/newlines/)
   })
