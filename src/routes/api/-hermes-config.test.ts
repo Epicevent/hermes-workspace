@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ensureGatewayProbed } from '../../server/gateway-capabilities'
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: (_path: string) => (opts: any) => opts,
@@ -36,6 +37,8 @@ beforeEach(() => {
   setEnv('HERMES_HOME', tmpHome)
   setEnv('CLAUDE_HOME', undefined)
   vi.resetModules()
+  vi.mocked(ensureGatewayProbed).mockReset()
+  vi.mocked(ensureGatewayProbed).mockResolvedValue({} as any)
 })
 
 afterEach(() => {
@@ -78,6 +81,31 @@ describe('canonical /api/hermes-config route', () => {
     const openrouter = body.providers.find((p: any) => p.id === 'openrouter')
     expect(openrouter.configured).toBe(true)
     expect(openrouter.isDefault).toBe(true)
+  })
+
+  it('GET still returns local config when gateway probing fails', async () => {
+    vi.mocked(ensureGatewayProbed).mockRejectedValue(new Error('probe failed'))
+    fs.writeFileSync(
+      path.join(tmpHome, 'config.yaml'),
+      'provider: google\nmodel:\n  provider: google\n  default: gemini-3.1-pro-preview\n',
+      'utf-8',
+    )
+    fs.writeFileSync(
+      path.join(tmpHome, '.env'),
+      'GOOGLE_API_KEY=google-key-1234\n',
+      'utf-8',
+    )
+
+    const handlers = await loadHandlers('./hermes-config')
+    const res = await handlers.GET({
+      request: new Request('http://localhost/api/hermes-config'),
+    })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.activeProvider).toBe('google')
+    expect(body.activeModel).toBe('gemini-3.1-pro-preview')
   })
 
   it('PATCH dispatches set-default-model and returns the action message', async () => {
@@ -131,20 +159,25 @@ describe('canonical /api/hermes-config route', () => {
     expect(res.status).toBe(400)
   })
 
-  it('PATCH returns 503 when the gateway capability is unavailable', async () => {
-    vi.doMock('../../server/gateway-capabilities', () => ({
-      ensureGatewayProbed: vi.fn(),
-      getCapabilities: () => ({ config: false }),
-    }))
+  it('PATCH writes local config without requiring gateway config capability', async () => {
     const handlers = await loadHandlers('./hermes-config')
     const res = await handlers.PATCH({
       request: new Request('http://localhost/api/hermes-config', {
         method: 'PATCH',
-        body: JSON.stringify({ action: 'set-api-key', envKey: 'X', value: 'y' }),
+        body: JSON.stringify({
+          action: 'set-default-model',
+          providerId: 'google',
+          modelId: 'gemini-3.1-pro-preview',
+        }),
       }),
     })
-    expect(res.status).toBe(503)
-    vi.doUnmock('../../server/gateway-capabilities')
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(
+      fs.readFileSync(path.join(tmpHome, 'config.yaml'), 'utf-8'),
+    ).toContain('gemini-3.1-pro-preview')
   })
 })
 

@@ -93,6 +93,7 @@ describe('normalizeHermesConfigState', () => {
     expect(google?.envKeys).toEqual(['GOOGLE_API_KEY', 'GEMINI_API_KEY'])
     expect(google?.maskedCredentials.GOOGLE_API_KEY).toBe('goog...3456')
     expect(google?.models.map((model) => model.id)).toContain('gemini-2.5-flash')
+    expect(google?.models.map((model) => model.id)).toContain('gemini-3.1-pro-preview')
   })
 
   it('accepts GEMINI_API_KEY as a Google Gemini key alias', () => {

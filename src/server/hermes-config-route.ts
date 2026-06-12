@@ -3,13 +3,8 @@ import path from 'node:path'
 import YAML from 'yaml'
 import { z } from 'zod'
 
-import { createCapabilityUnavailablePayload } from '@/lib/feature-gates'
-
 import { isAuthenticated } from './auth-middleware'
-import {
-  ensureGatewayProbed,
-  getCapabilities,
-} from './gateway-capabilities'
+import { ensureGatewayProbed } from './gateway-capabilities'
 import { normalizeHermesConfigState } from './hermes-config-migration'
 import {
   applyHermesConfigPatch,
@@ -72,22 +67,10 @@ const LegacyPatchSchema = z.object({
 })
 
 async function authorize(request: Request): Promise<AuthResult> {
-  const result = isAuthenticated(request) as AuthResult
-  if (result !== true) return result
-  await ensureGatewayProbed()
+  if (!isAuthenticated(request)) {
+    return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+  }
   return true
-}
-
-function unavailablePayload(extra: Record<string, unknown> = {}): Response {
-  return Response.json({
-    ...createCapabilityUnavailablePayload('config'),
-    config: {},
-    providers: [],
-    customProviders: [],
-    activeProvider: '',
-    activeModel: '',
-    ...extra,
-  })
 }
 
 export async function handleHermesConfigGet({
@@ -99,11 +82,9 @@ export async function handleHermesConfigGet({
   if (auth !== true) return auth
 
   const paths = resolveHermesConfigPaths()
-  if (!getCapabilities().config) {
-    return unavailablePayload({ paths, claudeHome: paths.hermesHome })
-  }
 
-  await ensureDiscovery()
+  await Promise.resolve(ensureGatewayProbed()).catch(() => undefined)
+  await Promise.resolve(ensureDiscovery()).catch(() => undefined)
   const files = readHermesConfigFiles(paths)
   const state = normalizeHermesConfigState({
     paths,
@@ -198,17 +179,6 @@ export async function handleHermesConfigPatch({
 }): Promise<Response> {
   const auth = await authorize(request)
   if (auth !== true) return auth
-
-  if (!getCapabilities().config) {
-    return new Response(
-      JSON.stringify(
-        createCapabilityUnavailablePayload('config', {
-          error: 'Configuration updates are unavailable on this backend.',
-        }),
-      ),
-      { status: 503, headers: { 'Content-Type': 'application/json' } },
-    )
-  }
 
   let body: unknown
   try {
