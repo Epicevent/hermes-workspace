@@ -186,6 +186,15 @@ jobs:
           echo "Runtime image contract did not become ready before timeout"
           exit 1
 
+      - name: Free disk before runtime publish
+        run: |
+          set -euo pipefail
+          docker rm -f $(docker ps -aq) >/dev/null 2>&1 || true
+          docker image rm -f hermes-runtime:smoke >/dev/null 2>&1 || true
+          docker system prune -af --volumes >/dev/null 2>&1 || true
+          docker builder prune -af >/dev/null 2>&1 || true
+          df -h
+
       - name: Build & push runtime
         uses: docker/build-push-action@v5
         with:
