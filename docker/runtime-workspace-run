@@ -10,11 +10,45 @@ export HERMES_API_URL="${HERMES_API_URL:-http://127.0.0.1:8642}"
 export HERMES_DASHBOARD_URL="${HERMES_DASHBOARD_URL:-http://127.0.0.1:9119}"
 export HERMES_WORKSPACE_DIR="${HERMES_WORKSPACE_DIR:-/workspace}"
 
+if [ "$(id -u)" = "0" ] && [ -n "${OPENCLAW_NAS_DATA_GID:-}" ]; then
+  case "$OPENCLAW_NAS_DATA_GID" in
+    *[!0-9]*)
+      echo "ignoring non-numeric OPENCLAW_NAS_DATA_GID=$OPENCLAW_NAS_DATA_GID" >&2
+      ;;
+    *)
+      data_group="$(getent group "$OPENCLAW_NAS_DATA_GID" | awk -F: 'NR == 1 {print $1}' || true)"
+      if [ -z "$data_group" ]; then
+        data_group="openclaw-nas-data"
+        if getent group "$data_group" >/dev/null 2>&1; then
+          data_group="openclaw-nas-$OPENCLAW_NAS_DATA_GID"
+        fi
+        groupadd -g "$OPENCLAW_NAS_DATA_GID" "$data_group" 2>/dev/null || true
+        data_group="$(getent group "$OPENCLAW_NAS_DATA_GID" | awk -F: 'NR == 1 {print $1}' || true)"
+      fi
+      if [ -n "$data_group" ]; then
+        usermod -a -G "$data_group" hermes 2>/dev/null || true
+      fi
+      ;;
+  esac
+fi
+
 uid="$(id -u hermes)"
 gid="$(id -g hermes)"
 if [ "$uid:$gid" = "10000:10000" ] && [ "${ALLOW_HERMES_DEFAULT_UID_GID:-0}" != "1" ]; then
   echo "refusing to start workspace before hermes uid/gid initialization: $uid:$gid" >&2
   exit 111
+fi
+
+if [ -n "${OPENCLAW_NAS_DATA_GID:-}" ]; then
+  case "$OPENCLAW_NAS_DATA_GID" in
+    *[!0-9]*) ;;
+    *)
+      if ! id -G hermes | tr ' ' '\n' | grep -Fx "$OPENCLAW_NAS_DATA_GID" >/dev/null; then
+        echo "refusing to start workspace without NAS data group membership: gid=$OPENCLAW_NAS_DATA_GID" >&2
+        exit 111
+      fi
+      ;;
+  esac
 fi
 
 exec s6-setuidgid hermes node --max-old-space-size="${NODE_MAX_OLD_SPACE_SIZE:-2048}" server-entry.js
