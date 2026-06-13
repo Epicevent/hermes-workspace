@@ -4,21 +4,23 @@ set -euo pipefail
 image_ref="${1:?usage: runtime-image-smoke.sh IMAGE_REF}"
 
 workspace_dir="$(mktemp -d)"
+data_dir="$(mktemp -d)"
 mkdir -p "$workspace_dir/nas_docs"
 printf 'runtime smoke\n' > "$workspace_dir/nas_docs/README.txt"
 data_gid="$(stat -c %g "$workspace_dir")"
-chmod 0750 "$workspace_dir" "$workspace_dir/nas_docs"
+chmod 0750 "$workspace_dir" "$workspace_dir/nas_docs" "$data_dir"
 chmod 0640 "$workspace_dir/nas_docs/README.txt"
 
 cid="$(docker run -d \
   -p 127.0.0.1:3000:3000 \
+  -v "$data_dir:/opt/data" \
   -v "$workspace_dir:/workspace" \
   -e API_SERVER_KEY=ci-smoke-api-server-key \
   -e HERMES_API_TOKEN=ci-smoke-api-server-key \
   -e OPENCLAW_NAS_DATA_GID="$data_gid" \
   -e HERMES_ALLOW_INSECURE_REMOTE=1 \
   "$image_ref")"
-trap 'docker logs "$cid" || true; docker rm -f "$cid" || true; rm -rf "$workspace_dir"' EXIT
+trap 'docker logs "$cid" || true; docker rm -f "$cid" || true; rm -rf "$workspace_dir" "$data_dir"' EXIT
 
 for _ in $(seq 1 90); do
   status="$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' "$cid")"
