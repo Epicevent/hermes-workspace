@@ -141,6 +141,15 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      - name: Free disk before runtime smoke build
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          docker rm -f $(docker ps -aq) >/dev/null 2>&1 || true
+          docker system prune -af --volumes >/dev/null 2>&1 || true
+          docker builder prune -af >/dev/null 2>&1 || true
+          df -h
+
       - name: Build smoke-test runtime image
         uses: docker/build-push-action@v5
         with:
