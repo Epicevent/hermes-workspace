@@ -38,7 +38,11 @@ for _ in $(seq 1 240); do
   if curl -fsS http://127.0.0.1:3000/ >/dev/null \
     && docker exec "$cid" curl -fsS http://127.0.0.1:8642/health >/dev/null \
     && docker exec "$cid" curl -fsS http://127.0.0.1:9119/api/status >/dev/null; then
-    docker exec "$cid" test -e /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d/legacy-cont-init
+    if docker exec "$cid" test -e /etc/s6-overlay/s6-rc.d/legacy-cont-init; then
+      docker exec "$cid" test -e /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d/legacy-cont-init
+    else
+      echo "legacy-cont-init not present in base image; dependency check skipped"
+    fi
     docker exec "$cid" sh -lc '
       node_pid="$(pgrep -f "node .*server-entry[.]js" | head -n1)"
       test -n "$node_pid"

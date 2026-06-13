@@ -43,3 +43,6 @@ jobs:
 
       - name: Push fast runtime image
         run: docker push "${{ env.RUNTIME_IMAGE }}:dev-${{ github.sha }}"
+
+      - name: Show fast runtime digest
+        run: docker buildx imagetools inspect "${{ env.RUNTIME_IMAGE }}:dev-${{ github.sha }}"

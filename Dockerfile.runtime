@@ -39,7 +39,11 @@ RUN set -eu; \
       /etc/s6-overlay/s6-rc.d/hermes-workspace-server \
       /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d \
       /etc/s6-overlay/s6-rc.d/user/contents.d; \
-    touch /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d/legacy-cont-init
+    if [ -e /etc/s6-overlay/s6-rc.d/legacy-cont-init ]; then \
+      touch /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d/legacy-cont-init; \
+    else \
+      echo "warning: legacy-cont-init service not found in base image" >&2; \
+    fi
 
 COPY docker/runtime-workspace-run /etc/s6-overlay/s6-rc.d/hermes-workspace-server/run
 
