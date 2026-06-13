@@ -35,7 +35,13 @@ COPY --from=build --chown=hermes:hermes /app/server-entry.js ./server-entry.js
 COPY --from=build --chown=hermes:hermes /app/skills ./skills
 
 RUN set -eu; \
-    mkdir -p /etc/s6-overlay/s6-rc.d/hermes-workspace-server /etc/s6-overlay/s6-rc.d/user/contents.d
+    mkdir -p \
+      /etc/s6-overlay/s6-rc.d/hermes-workspace-server \
+      /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d \
+      /etc/s6-overlay/s6-rc.d/user/contents.d; \
+    if [ -e /etc/s6-overlay/s6-rc.d/legacy-cont-init ]; then \
+      touch /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d/legacy-cont-init; \
+    fi
 
 COPY docker/runtime-workspace-run /etc/s6-overlay/s6-rc.d/hermes-workspace-server/run
 

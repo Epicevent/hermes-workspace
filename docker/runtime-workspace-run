@@ -10,4 +10,11 @@ export HERMES_API_URL="${HERMES_API_URL:-http://127.0.0.1:8642}"
 export HERMES_DASHBOARD_URL="${HERMES_DASHBOARD_URL:-http://127.0.0.1:9119}"
 export HERMES_WORKSPACE_DIR="${HERMES_WORKSPACE_DIR:-/workspace}"
 
+uid="$(id -u hermes)"
+gid="$(id -g hermes)"
+if [ "$uid:$gid" = "10000:10000" ] && [ "${ALLOW_HERMES_DEFAULT_UID_GID:-0}" != "1" ]; then
+  echo "refusing to start workspace before hermes uid/gid initialization: $uid:$gid" >&2
+  exit 111
+fi
+
 exec s6-setuidgid hermes node --max-old-space-size="${NODE_MAX_OLD_SPACE_SIZE:-2048}" server-entry.js
