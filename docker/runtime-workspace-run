@@ -10,6 +10,38 @@ export HERMES_API_URL="${HERMES_API_URL:-http://127.0.0.1:8642}"
 export HERMES_DASHBOARD_URL="${HERMES_DASHBOARD_URL:-http://127.0.0.1:9119}"
 export HERMES_WORKSPACE_DIR="${HERMES_WORKSPACE_DIR:-/workspace}"
 
+if [ "$(id -u)" = "0" ]; then
+  if [ -n "${HERMES_GID:-}" ]; then
+    case "$HERMES_GID" in
+      *[!0-9]*)
+        echo "invalid HERMES_GID=$HERMES_GID" >&2
+        exit 111
+        ;;
+      *)
+        current_gid="$(id -g hermes)"
+        if [ "$HERMES_GID" != "$current_gid" ]; then
+          groupmod -o -g "$HERMES_GID" hermes 2>/dev/null || true
+        fi
+        ;;
+    esac
+  fi
+
+  if [ -n "${HERMES_UID:-}" ]; then
+    case "$HERMES_UID" in
+      *[!0-9]*)
+        echo "invalid HERMES_UID=$HERMES_UID" >&2
+        exit 111
+        ;;
+      *)
+        current_uid="$(id -u hermes)"
+        if [ "$HERMES_UID" != "$current_uid" ]; then
+          usermod -o -u "$HERMES_UID" hermes
+        fi
+        ;;
+    esac
+  fi
+fi
+
 if [ "$(id -u)" = "0" ] && [ -n "${OPENCLAW_NAS_DATA_GID:-}" ]; then
   case "$OPENCLAW_NAS_DATA_GID" in
     *[!0-9]*)
@@ -36,6 +68,16 @@ uid="$(id -u hermes)"
 gid="$(id -g hermes)"
 if [ "$uid:$gid" = "10000:10000" ] && [ "${ALLOW_HERMES_DEFAULT_UID_GID:-0}" != "1" ]; then
   echo "refusing to start workspace before hermes uid/gid initialization: $uid:$gid" >&2
+  exit 111
+fi
+
+if [ -n "${HERMES_UID:-}" ] && [ "$uid" != "$HERMES_UID" ]; then
+  echo "refusing to start workspace with wrong hermes uid: actual=$uid expected=$HERMES_UID" >&2
+  exit 111
+fi
+
+if [ -n "${HERMES_GID:-}" ] && [ "$gid" != "$HERMES_GID" ]; then
+  echo "refusing to start workspace with wrong hermes gid: actual=$gid expected=$HERMES_GID" >&2
   exit 111
 fi
 
