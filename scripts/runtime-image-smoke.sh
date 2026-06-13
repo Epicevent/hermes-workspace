@@ -26,7 +26,7 @@ cid="$(docker run -d \
   "$image_ref")"
 trap 'docker logs "$cid" || true; docker rm -f "$cid" || true; sudo rm -rf "$workspace_dir" "$data_dir"' EXIT
 
-for _ in $(seq 1 90); do
+for _ in $(seq 1 240); do
   status="$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' "$cid")"
   case "$status" in
     exited*)
