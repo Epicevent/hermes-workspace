@@ -39,9 +39,7 @@ RUN set -eu; \
       /etc/s6-overlay/s6-rc.d/hermes-workspace-server \
       /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d \
       /etc/s6-overlay/s6-rc.d/user/contents.d; \
-    if [ -e /etc/s6-overlay/s6-rc.d/legacy-cont-init ]; then \
-      touch /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d/legacy-cont-init; \
-    fi
+    touch /etc/s6-overlay/s6-rc.d/hermes-workspace-server/dependencies.d/legacy-cont-init
 
 COPY docker/runtime-workspace-run /etc/s6-overlay/s6-rc.d/hermes-workspace-server/run
 
