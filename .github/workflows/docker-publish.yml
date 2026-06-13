@@ -155,36 +155,7 @@ jobs:
       - name: Smoke test runtime image contract
         run: |
           set -euo pipefail
-
-          cid=$(docker run -d \
-            -p 127.0.0.1:3000:3000 \
-            -e API_SERVER_KEY=ci-smoke-api-server-key \
-            -e HERMES_API_TOKEN=ci-smoke-api-server-key \
-            -e HERMES_PASSWORD=ci-smoke-test-password \
-            hermes-runtime:smoke)
-          trap 'docker logs "$cid" || true; docker rm -f "$cid" || true' EXIT
-
-          for _ in $(seq 1 90); do
-            status=$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' "$cid")
-            case "$status" in
-              exited*)
-                echo "Runtime container exited before becoming healthy: $status"
-                exit 1
-                ;;
-            esac
-
-            if curl -fsS http://127.0.0.1:3000/ >/dev/null \
-              && docker exec "$cid" curl -fsS http://127.0.0.1:8642/health >/dev/null \
-              && docker exec "$cid" curl -fsS http://127.0.0.1:9119/api/status >/dev/null; then
-              echo "Runtime image served workspace, gateway, and dashboard successfully"
-              exit 0
-            fi
-
-            sleep 2
-          done
-
-          echo "Runtime image contract did not become ready before timeout"
-          exit 1
+          bash scripts/runtime-image-smoke.sh hermes-runtime:smoke
 
       - name: Free disk before runtime publish
         run: |
