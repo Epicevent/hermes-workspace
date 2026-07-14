@@ -23,17 +23,19 @@ export function rewriteLocalMediaSources(content: string): string {
     return `/api/media?path=${encodeURIComponent(path)}`
   }
 
-  const markdownImage = /(!\[[^\]]*\]\()MEDIA:([^\)\s]+)(\))/g
+  const markdownImage = /(!\[[^\]]*\]\()MEDIA:([^)\s]+)(\))/g
   const withMarkdownImages = content.replace(
     markdownImage,
     (_match, prefix: string, mediaPath: string, suffix: string) => {
       const rewritten = rewritePath(mediaPath)
-      return rewritten ? `${prefix}${rewritten}${suffix}` : `${prefix}MEDIA:${mediaPath}${suffix}`
+      return rewritten
+        ? `${prefix}${rewritten}${suffix}`
+        : `${prefix}MEDIA:${mediaPath}${suffix}`
     },
   )
 
   const htmlImage = /(<img\b[^>]*\bsrc=)(["'])MEDIA:([^"']+)\2/gi
-  return withMarkdownImages.replace(
+  const withHtmlImages = withMarkdownImages.replace(
     htmlImage,
     (_match, prefix: string, quote: string, mediaPath: string) => {
       const rewritten = rewritePath(mediaPath)
@@ -42,6 +44,28 @@ export function rewriteLocalMediaSources(content: string): string {
         : `${prefix}${quote}MEDIA:${mediaPath}${quote}`
     },
   )
+
+  // Bare `MEDIA:/abs/path` tokens sitting in prose (not already inside image
+  // markup — those were rewritten above). Messaging bridges deliver these as
+  // native attachments; the web chat previously rendered them as literal text.
+  // Turn a bare local token into a markdown image (image extensions) or link
+  // (everything else) so the file actually shows. Remote (http/https) MEDIA
+  // tokens are left untouched by rewritePath and stay as-is.
+  const bareMedia = /MEDIA:(\/[^\s<>"'`)\]}]+)/g
+  return withHtmlImages.replace(bareMedia, (match, rawPath: string) => {
+    const trail = (rawPath.match(/[.,;:!?]+$/) || [''])[0]
+    const path = trail
+      ? rawPath.slice(0, rawPath.length - trail.length)
+      : rawPath
+    const rewritten = rewritePath(path)
+    if (!rewritten) return match
+    const name = path.split('/').pop() || 'file'
+    const isImage = /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i.test(path)
+    const element = isImage
+      ? `![${name}](${rewritten})`
+      : `[${name}](${rewritten})`
+    return element + trail
+  })
 }
 
 export type MarkdownProps = {
