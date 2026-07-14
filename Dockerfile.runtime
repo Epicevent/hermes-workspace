@@ -26,12 +26,22 @@ LABEL com.epicevent.hermes-runtime.agent-base-image="${HERMES_AGENT_BASE}"
 LABEL com.epicevent.hermes-runtime.components="hermes-workspace-server,hermes-gateway,hermes-dashboard"
 LABEL com.epicevent.hermes-runtime.health.endpoints="workspace=http://127.0.0.1:3000/,gateway=http://127.0.0.1:8642/health,dashboard=http://127.0.0.1:9119/api/status"
 
+# Self-contained selftest contract: the image declares how to run its own
+# customer-truth check (hermes-jitech#9). opsctl trusts these labels through the
+# root-approved image digest, runs the command with `docker exec`, and gates
+# rollouts on the required checks the JSON output itself declares. The command
+# drops to the `hermes` service user internally (selftest_service_user_ok).
+LABEL com.epicevent.agent-runtime.selftest.name="hermes-selftest-v1"
+LABEL com.epicevent.agent-runtime.selftest.command="node /opt/hermes-workspace/selftest.mjs --json"
+LABEL com.epicevent.agent-runtime.selftest.timeout="60"
+
 WORKDIR /opt/hermes-workspace
 
 COPY --from=build --chown=hermes:hermes /app/dist ./dist
 COPY --from=build --chown=hermes:hermes /app/node_modules ./node_modules
 COPY --from=build --chown=hermes:hermes /app/package.json ./package.json
 COPY --from=build --chown=hermes:hermes /app/server-entry.js ./server-entry.js
+COPY --from=build --chown=hermes:hermes /app/selftest.mjs ./selftest.mjs
 COPY --from=build --chown=hermes:hermes /app/skills ./skills
 
 RUN set -eu; \

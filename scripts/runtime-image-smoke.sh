@@ -108,7 +108,46 @@ function assert(condition, message) {
   process.exit(1);
 });
 NODE
-    echo "Runtime image served workspace, gateway, dashboard, workspace APIs, and files APIs successfully"
+    # Selftest contract wiring (hermes-jitech#9): the label must name a command
+    # that actually runs in the image and prints the contract JSON. The smoke
+    # env has no model/config, so we assert wiring + shape + the checks the
+    # smoke env CAN satisfy — not ok=true.
+    label_cmd="$(docker inspect --format '{{index .Config.Labels "com.epicevent.agent-runtime.selftest.command"}}' "$image_ref")"
+    if [ "$label_cmd" != "node /opt/hermes-workspace/selftest.mjs --json" ]; then
+      echo "selftest label command mismatch: '$label_cmd'"
+      exit 1
+    fi
+    selftest_out="$(docker exec "$cid" $label_cmd || true)"
+    printf '%s' "$selftest_out" | docker exec -i "$cid" node -e '
+      let raw = "";
+      process.stdin.on("data", (d) => { raw += d; });
+      process.stdin.on("end", () => {
+        const result = JSON.parse(raw);
+        const names = result.checks.map((c) => c.name);
+        const expected = [
+          "selftest_service_user_ok",
+          "selftest_workspace_http_ok",
+          "selftest_gateway_health_ok",
+          "selftest_dashboard_status_ok",
+          "selftest_model_info_ok",
+          "selftest_config_ok",
+          "selftest_nas_access_ok",
+        ];
+        for (const name of expected) {
+          if (!names.includes(name)) { console.error(`missing check ${name}`); process.exit(1); }
+        }
+        if (JSON.stringify(result.required_checks) !== JSON.stringify(expected)) {
+          console.error("required_checks mismatch"); process.exit(1);
+        }
+        for (const name of ["selftest_service_user_ok", "selftest_workspace_http_ok", "selftest_gateway_health_ok", "selftest_dashboard_status_ok", "selftest_nas_access_ok"]) {
+          const check = result.checks.find((c) => c.name === name);
+          if (!check.ok) { console.error(`${name} failed in smoke: ${check.detail}`); process.exit(1); }
+        }
+        console.error("selftest wiring ok (model/config checks not asserted in smoke env)");
+      });
+    ' || { echo "selftest contract wiring failed"; exit 1; }
+
+    echo "Runtime image served workspace, gateway, dashboard, workspace APIs, files APIs, and selftest contract successfully"
     exit 0
   fi
 
