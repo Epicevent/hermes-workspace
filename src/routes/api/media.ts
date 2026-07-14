@@ -30,12 +30,23 @@ const MIME_BY_EXT: Record<string, string> = {
 }
 
 function hermesHome(): string {
-  return process.env.HERMES_HOME ?? process.env.CLAUDE_HOME ?? resolvePath(os.homedir(), '.hermes')
+  return (
+    process.env.HERMES_HOME ??
+    process.env.CLAUDE_HOME ??
+    resolvePath(os.homedir(), '.hermes')
+  )
+}
+
+function workspaceDir(): string | null {
+  const dir =
+    process.env.HERMES_WORKSPACE_DIR ?? process.env.CLAUDE_WORKSPACE_DIR
+  return dir ? resolvePath(dir) : null
 }
 
 function allowedPrefixes(): Array<string> {
   const home = os.homedir()
   const stateHome = resolvePath(hermesHome())
+  const workspace = workspaceDir()
   return [
     '/tmp',
     resolvePath(home, 'tmp'),
@@ -47,13 +58,23 @@ function allowedPrefixes(): Array<string> {
     resolvePath(home, 'projects'),
     resolvePath(stateHome, 'projects'),
     resolvePath(home, '.ocplatform', 'workspace', 'projects'),
+    // The agent saves generated images (and other artifacts) into its workspace
+    // root — HERMES_WORKSPACE_DIR, typically /workspace — and references them
+    // with MEDIA:/workspace/<name>. /api/files already serves this tree, so
+    // /api/media was simply inconsistent in omitting it, and every generated
+    // image 403'd. Each slot is a single customer's own workspace (slot = tenant
+    // boundary), and its files — including the read-only NAS docs mounted at
+    // /workspace/nas_docs — are meant to be visible in that customer's own UI.
+    ...(workspace ? [workspace] : []),
   ]
 }
 
 function isAllowed(absPath: string): boolean {
   return allowedPrefixes().some((prefix) => {
     const normalizedPrefix = resolvePath(prefix)
-    return absPath === normalizedPrefix || absPath.startsWith(`${normalizedPrefix}/`)
+    return (
+      absPath === normalizedPrefix || absPath.startsWith(`${normalizedPrefix}/`)
+    )
   })
 }
 
@@ -70,7 +91,9 @@ export const Route = createFileRoute('/api/media')({
           const rawPath = url.searchParams.get('path')?.trim() ?? ''
           if (!rawPath) return new Response('path required', { status: 400 })
           if (!isAbsolute(rawPath)) {
-            return new Response('Only absolute paths are accepted', { status: 400 })
+            return new Response('Only absolute paths are accepted', {
+              status: 400,
+            })
           }
 
           const absPath = resolvePath(rawPath)

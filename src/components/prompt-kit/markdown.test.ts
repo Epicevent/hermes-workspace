@@ -11,9 +11,7 @@ describe('rewriteLocalMediaSources', () => {
 
   it('rewrites html image MEDIA tokens that point to local files without corrupting quotes', () => {
     expect(
-      rewriteLocalMediaSources(
-        '<img src="MEDIA:/tmp/cat.png" alt="cat" />',
-      ),
+      rewriteLocalMediaSources('<img src="MEDIA:/tmp/cat.png" alt="cat" />'),
     ).toBe('<img src="/api/media?path=%2Ftmp%2Fcat.png" alt="cat" />')
   })
 
@@ -22,7 +20,9 @@ describe('rewriteLocalMediaSources', () => {
       rewriteLocalMediaSources('![cat](MEDIA:https://example.com/cat.png)'),
     ).toBe('![cat](MEDIA:https://example.com/cat.png)')
     expect(
-      rewriteLocalMediaSources('<img src="MEDIA:https://example.com/cat.png" />'),
+      rewriteLocalMediaSources(
+        '<img src="MEDIA:https://example.com/cat.png" />',
+      ),
     ).toBe('<img src="MEDIA:https://example.com/cat.png" />')
   })
 
@@ -37,5 +37,42 @@ describe('rewriteLocalMediaSources', () => {
   it('passes through content without MEDIA tokens unchanged', () => {
     const plain = 'Hello world, no images here.'
     expect(rewriteLocalMediaSources(plain)).toBe(plain)
+  })
+
+  it('renders a bare MEDIA image token as a markdown image (the reported case)', () => {
+    // The agent emits a standalone MEDIA:/workspace/... token in prose; it used
+    // to show as literal text.
+    expect(
+      rewriteLocalMediaSources(
+        '아래 이미지를 참고하세요.\n\nMEDIA:/workspace/process_steps.png',
+      ),
+    ).toBe(
+      '아래 이미지를 참고하세요.\n\n![process_steps.png](/api/media?path=%2Fworkspace%2Fprocess_steps.png)',
+    )
+  })
+
+  it('renders a bare non-image MEDIA token as a link, not an image', () => {
+    expect(rewriteLocalMediaSources('MEDIA:/workspace/report.pdf')).toBe(
+      '[report.pdf](/api/media?path=%2Fworkspace%2Freport.pdf)',
+    )
+  })
+
+  it('keeps trailing sentence punctuation outside the rewritten token', () => {
+    expect(rewriteLocalMediaSources('See MEDIA:/workspace/a.png.')).toBe(
+      'See ![a.png](/api/media?path=%2Fworkspace%2Fa.png).',
+    )
+  })
+
+  it('does not double-rewrite MEDIA already inside image markup', () => {
+    // The markup pass handles these; the bare pass must not touch the produced
+    // /api/media URL.
+    const result = rewriteLocalMediaSources('![a](MEDIA:/tmp/a.png)')
+    expect(result).toBe('![a](/api/media?path=%2Ftmp%2Fa.png)')
+    expect(result).not.toContain('![a.png]')
+  })
+
+  it('leaves a bare remote MEDIA token untouched', () => {
+    const input = 'MEDIA:https://example.com/cat.png'
+    expect(rewriteLocalMediaSources(input)).toBe(input)
   })
 })
