@@ -69,6 +69,7 @@ import { Route as ApiStartClaudeRouteImport } from './routes/api/start-claude'
 import { Route as ApiStartAgentRouteImport } from './routes/api/start-agent'
 import { Route as ApiSkillsRouteImport } from './routes/api/skills'
 import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
+import { Route as ApiSessionTitleRouteImport } from './routes/api/session-title'
 import { Route as ApiSessionStatusRouteImport } from './routes/api/session-status'
 import { Route as ApiSessionSendRouteImport } from './routes/api/session-send'
 import { Route as ApiSessionHistoryRouteImport } from './routes/api/session-history'
@@ -469,6 +470,11 @@ const ApiSkillsRoute = ApiSkillsRouteImport.update({
 const ApiSessionsRoute = ApiSessionsRouteImport.update({
   id: '/api/sessions',
   path: '/api/sessions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSessionTitleRoute = ApiSessionTitleRouteImport.update({
+  id: '/api/session-title',
+  path: '/api/session-title',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSessionStatusRoute = ApiSessionStatusRouteImport.update({
@@ -1047,6 +1053,7 @@ export interface FileRoutesByFullPath {
   '/api/session-history': typeof ApiSessionHistoryRoute
   '/api/session-send': typeof ApiSessionSendRoute
   '/api/session-status': typeof ApiSessionStatusRoute
+  '/api/session-title': typeof ApiSessionTitleRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/start-agent': typeof ApiStartAgentRoute
@@ -1208,6 +1215,7 @@ export interface FileRoutesByTo {
   '/api/session-history': typeof ApiSessionHistoryRoute
   '/api/session-send': typeof ApiSessionSendRoute
   '/api/session-status': typeof ApiSessionStatusRoute
+  '/api/session-title': typeof ApiSessionTitleRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/start-agent': typeof ApiStartAgentRoute
@@ -1371,6 +1379,7 @@ export interface FileRoutesById {
   '/api/session-history': typeof ApiSessionHistoryRoute
   '/api/session-send': typeof ApiSessionSendRoute
   '/api/session-status': typeof ApiSessionStatusRoute
+  '/api/session-title': typeof ApiSessionTitleRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/start-agent': typeof ApiStartAgentRoute
@@ -1535,6 +1544,7 @@ export interface FileRouteTypes {
     | '/api/session-history'
     | '/api/session-send'
     | '/api/session-status'
+    | '/api/session-title'
     | '/api/sessions'
     | '/api/skills'
     | '/api/start-agent'
@@ -1696,6 +1706,7 @@ export interface FileRouteTypes {
     | '/api/session-history'
     | '/api/session-send'
     | '/api/session-status'
+    | '/api/session-title'
     | '/api/sessions'
     | '/api/skills'
     | '/api/start-agent'
@@ -1858,6 +1869,7 @@ export interface FileRouteTypes {
     | '/api/session-history'
     | '/api/session-send'
     | '/api/session-status'
+    | '/api/session-title'
     | '/api/sessions'
     | '/api/skills'
     | '/api/start-agent'
@@ -2021,6 +2033,7 @@ export interface RootRouteChildren {
   ApiSessionHistoryRoute: typeof ApiSessionHistoryRoute
   ApiSessionSendRoute: typeof ApiSessionSendRoute
   ApiSessionStatusRoute: typeof ApiSessionStatusRoute
+  ApiSessionTitleRoute: typeof ApiSessionTitleRoute
   ApiSessionsRoute: typeof ApiSessionsRouteWithChildren
   ApiSkillsRoute: typeof ApiSkillsRouteWithChildren
   ApiStartAgentRoute: typeof ApiStartAgentRoute
@@ -2505,6 +2518,13 @@ declare module '@tanstack/react-router' {
       path: '/api/sessions'
       fullPath: '/api/sessions'
       preLoaderRoute: typeof ApiSessionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/session-title': {
+      id: '/api/session-title'
+      path: '/api/session-title'
+      fullPath: '/api/session-title'
+      preLoaderRoute: typeof ApiSessionTitleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/session-status': {
@@ -3490,6 +3510,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSessionHistoryRoute: ApiSessionHistoryRoute,
   ApiSessionSendRoute: ApiSessionSendRoute,
   ApiSessionStatusRoute: ApiSessionStatusRoute,
+  ApiSessionTitleRoute: ApiSessionTitleRoute,
   ApiSessionsRoute: ApiSessionsRouteWithChildren,
   ApiSkillsRoute: ApiSkillsRouteWithChildren,
   ApiStartAgentRoute: ApiStartAgentRoute,
