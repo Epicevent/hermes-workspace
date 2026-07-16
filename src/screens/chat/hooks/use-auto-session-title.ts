@@ -156,20 +156,45 @@ export function useAutoSessionTitle({
 
   const mutation = useMutation({
     mutationFn: async (payload: UpdateTitlePayload) => {
+      // Prefer an AI-generated title (parity with OpenClaw's
+      // sessions.suggestLabel: the session's own model summarizes the
+      // conversation into a short, same-language title). Fall back to the
+      // first-user-message heuristic in `payload.title` when the model yields
+      // nothing usable or is unavailable.
+      let title = payload.title
+      try {
+        const aiRes = await fetch('/api/session-title', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionKey: payload.sessionKey }),
+        })
+        if (aiRes.ok) {
+          const data = (await aiRes.json().catch(() => null)) as {
+            ok?: boolean
+            suggestion?: string
+          } | null
+          const suggestion =
+            typeof data?.suggestion === 'string' ? data.suggestion.trim() : ''
+          if (suggestion) title = suggestion
+        }
+      } catch {
+        // Network/model failure → keep the heuristic fallback title.
+      }
+
       const res = await fetch('/api/sessions', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           sessionKey: payload.sessionKey,
           friendlyId: payload.friendlyId,
-          label: payload.title,
+          label: title,
         }),
       })
       if (!res.ok) {
         const message = await res.text().catch(() => 'Failed to update title')
         throw new Error(message)
       }
-      return payload
+      return { ...payload, title }
     },
     onSuccess: (payload) => {
       applyTitle(payload.friendlyId, payload.title, 'auto')
@@ -178,7 +203,7 @@ export function useAutoSessionTitle({
     onError: (error, payload) => {
       updateSessionTitleState(payload.friendlyId, {
         status: 'error',
-        error: error instanceof Error ? error.message : String(error ?? ''),
+        error: error instanceof Error ? error.message : String(error),
       })
     },
   })
