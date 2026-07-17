@@ -266,6 +266,11 @@ export function normalizeSessions(
         typeof session.preview === 'string'
           ? cleanUserText(session.preview) || session.preview.trim() || null
           : session.preview ?? null,
+      folderPath:
+        typeof session.folderPath === 'string' &&
+        session.folderPath.length > 0
+          ? session.folderPath
+          : undefined,
     }
   })
 }

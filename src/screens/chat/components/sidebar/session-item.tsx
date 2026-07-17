@@ -12,6 +12,7 @@ import { memo, useMemo } from 'react'
 import { getMessageTimestamp } from '../../utils'
 import type { SessionMeta } from '../../types'
 import { cn } from '@/lib/utils'
+import { SESSION_DRAG_MIME } from '@/lib/session-folder'
 import {
   MenuContent,
   MenuItem,
@@ -23,6 +24,8 @@ type SessionItemProps = {
   session: SessionMeta
   active: boolean
   isPinned: boolean
+  /** Enable drag-to-folder (sidebar folder tree drop targets). */
+  draggable?: boolean
   onSelect?: () => void
   onTogglePin: (session: SessionMeta) => void
   onRename: (session: SessionMeta) => void
@@ -100,6 +103,7 @@ function SessionItemComponent({
   session,
   active,
   isPinned,
+  draggable = false,
   onSelect,
   onTogglePin,
   onRename,
@@ -130,6 +134,21 @@ function SessionItemComponent({
     <Link
       to="/chat/$sessionKey"
       params={{ sessionKey: session.friendlyId }}
+      draggable={draggable}
+      onDragStart={
+        draggable
+          ? (event: React.DragEvent) => {
+              event.dataTransfer.effectAllowed = 'move'
+              event.dataTransfer.setData(
+                SESSION_DRAG_MIME,
+                JSON.stringify({
+                  key: session.key,
+                  friendlyId: session.friendlyId,
+                }),
+              )
+            }
+          : undefined
+      }
       onClick={() => {
         try {
           localStorage.setItem('claude-last-session', session.friendlyId)
@@ -228,6 +247,7 @@ function SessionItemComponent({
 function areSessionItemsEqual(prev: SessionItemProps, next: SessionItemProps) {
   if (prev.active !== next.active) return false
   if (prev.isPinned !== next.isPinned) return false
+  if (prev.draggable !== next.draggable) return false
   if (prev.onSelect !== next.onSelect) return false
   if (prev.onTogglePin !== next.onTogglePin) return false
   if (prev.onRename !== next.onRename) return false
@@ -242,7 +262,8 @@ function areSessionItemsEqual(prev: SessionItemProps, next: SessionItemProps) {
     prev.session.updatedAt === next.session.updatedAt &&
     prev.session.titleStatus === next.session.titleStatus &&
     prev.session.titleSource === next.session.titleSource &&
-    prev.session.titleError === next.session.titleError
+    prev.session.titleError === next.session.titleError &&
+    prev.session.folderPath === next.session.folderPath
   )
 }
 

@@ -14,6 +14,7 @@ import {
   updateSession,
 } from '../../server/claude-api'
 import { createCapabilityUnavailablePayload } from '@/lib/feature-gates'
+import { parseSessionFolderPath } from '@/lib/session-folder'
 import {
   deleteLocalSession,
   getLocalSession,
@@ -201,6 +202,22 @@ export const Route = createFileRoute('/api/sessions')({
             )
           }
 
+          // folderPath: absent = no change, null = clear, string = set.
+          // Validate here for a fast 400; the gateway re-validates with the
+          // same rules (SessionDB.sanitize_folder_path) before storage.
+          let folderPatch: string | null | undefined
+          if ('folderPath' in body) {
+            if (body.folderPath === null) {
+              folderPatch = null
+            } else {
+              const parsed = parseSessionFolderPath(body.folderPath)
+              if (!parsed.ok) {
+                return json({ ok: false, error: parsed.error }, { status: 400 })
+              }
+              folderPatch = parsed.folderPath
+            }
+          }
+
           const localSession = getLocalSession(sessionKey)
           if (localSession) {
             if (label) updateLocalSessionTitle(sessionKey, label)
@@ -241,9 +258,10 @@ export const Route = createFileRoute('/api/sessions')({
             })
           }
 
-          const session = await updateSession(sessionKey, {
-            title: label,
-          })
+          const updates: { title?: string; folder_path?: string | null } = {}
+          if (label !== undefined) updates.title = label
+          if (folderPatch !== undefined) updates.folder_path = folderPatch
+          const session = await updateSession(sessionKey, updates)
 
           return json({
             ok: true,
