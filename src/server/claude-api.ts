@@ -48,6 +48,7 @@ export type ClaudeSession = {
   parent_session_id?: string | null
   last_active?: number | null
   preview?: string | null
+  folder_path?: string | null
 }
 
 export type ClaudeMessage = {
@@ -172,7 +173,7 @@ export async function createSession(opts?: {
 
 export async function updateSession(
   sessionId: string,
-  updates: { title?: string },
+  updates: { title?: string; folder_path?: string | null },
 ): Promise<ClaudeSession> {
   if (getCapabilities().dashboard.available) {
     const resp = await updateDashboardSession(sessionId, updates)
@@ -332,6 +333,7 @@ export function toSessionSummary(
     title: session.title || undefined,
     derivedTitle: session.title || session.preview || undefined,
     preview: session.preview || undefined,
+    folderPath: session.folder_path || undefined,
     tokenCount: (session.input_tokens ?? 0) + (session.output_tokens ?? 0),
     totalTokens: (session.input_tokens ?? 0) + (session.output_tokens ?? 0),
     message_count: session.message_count ?? 0,

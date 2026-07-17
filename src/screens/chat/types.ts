@@ -93,6 +93,7 @@ export type SessionSummary = {
   titleSource?: SessionTitleSource
   titleError?: string | null
   preview?: string | null
+  folderPath?: string | null
 }
 
 export type SessionListResponse = {
@@ -117,6 +118,8 @@ export type SessionMeta = {
   titleSource?: SessionTitleSource
   titleError?: string | null
   preview?: string | null
+  /** Canonical "/"-joined sidebar folder location ("전구체/액상"). */
+  folderPath?: string
 }
 
 export type PathsPayload = {

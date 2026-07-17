@@ -4,6 +4,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
 import { memo, useMemo } from 'react'
 import { SessionItem } from './session-item'
+import { SessionFolderTree } from './session-folder-tree'
 import type { SessionMeta } from '../../types'
 import {
   Collapsible,
@@ -129,18 +130,14 @@ export const SidebarSessions = memo(function SidebarSessions({
                   {pinnedSessions.length > 0 ? (
                     <div className="my-1 border-t border-primary-200/80" />
                   ) : null}
-                  {unpinnedSessions.map((session) => (
-                    <SessionItem
-                      key={session.key}
-                      session={session}
-                      active={session.friendlyId === activeFriendlyId}
-                      isPinned={false}
-                      onSelect={onSelect}
-                      onTogglePin={handleTogglePin}
-                      onRename={onRename}
-                      onDelete={onDelete}
-                    />
-                  ))}
+                  <SessionFolderTree
+                    sessions={unpinnedSessions}
+                    activeFriendlyId={activeFriendlyId}
+                    onSelect={onSelect}
+                    onTogglePin={handleTogglePin}
+                    onRename={onRename}
+                    onDelete={onDelete}
+                  />
                 </>
               ) : (
                 <div className="px-2 py-2 text-xs text-primary-500">
@@ -192,6 +189,7 @@ function areSidebarSessionsEqual(
     if (prevSession.titleStatus !== nextSession.titleStatus) return false
     if (prevSession.titleSource !== nextSession.titleSource) return false
     if (prevSession.titleError !== nextSession.titleError) return false
+    if (prevSession.folderPath !== nextSession.folderPath) return false
   }
   return true
 }
