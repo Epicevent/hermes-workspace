@@ -13,14 +13,14 @@ import {
   toSessionSummary,
   updateSession,
 } from '../../server/claude-api'
-import { createCapabilityUnavailablePayload } from '@/lib/feature-gates'
-import { parseSessionFolderPath } from '@/lib/session-folder'
 import {
   deleteLocalSession,
   getLocalSession,
   listLocalSessions,
   updateLocalSessionTitle,
 } from '../../server/local-session-store'
+import { createCapabilityUnavailablePayload } from '@/lib/feature-gates'
+import { parseSessionFolderPath } from '@/lib/session-folder'
 
 export const Route = createFileRoute('/api/sessions')({
   server: {
@@ -242,7 +242,15 @@ export const Route = createFileRoute('/api/sessions')({
             })
           }
 
-          if (capabilities.dashboard.available && !capabilities.enhancedChat) {
+          // Dashboard-only mode synthesizes a label response without touching
+          // the gateway. A folderPath change MUST reach the gateway (the
+          // dashboard serves the same PATCH /api/sessions/{id} handler), so
+          // only label-only patches keep the legacy synthetic short-circuit.
+          if (
+            capabilities.dashboard.available &&
+            !capabilities.enhancedChat &&
+            folderPatch === undefined
+          ) {
             return json({
               ok: true,
               sessionKey,
