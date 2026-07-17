@@ -11,9 +11,9 @@ import {
 } from '@hugeicons/core-free-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { SessionItem } from './session-item'
 import { chatQueryKeys } from '../../chat-queries'
 import { useMoveSessionToFolder } from '../../hooks/use-move-session-to-folder'
+import { SessionItem } from './session-item'
 import type { SessionMeta } from '../../types'
 import type { SessionFolderNode } from '@/lib/session-folder'
 import {
@@ -35,7 +35,15 @@ import {
 } from '@/components/ui/menu'
 
 type SessionFolderTreeProps = {
+  /** Sessions rendered in the tree (unpinned). */
   sessions: Array<SessionMeta>
+  /**
+   * Every session including pinned ones. Folder rename/delete bulk-patches
+   * ALL sessions filed under a path — a pinned session keeps its folderPath
+   * even though it renders in the pinned block, and must not be left behind
+   * pointing at a stale path.
+   */
+  allSessions: Array<SessionMeta>
   activeFriendlyId: string
   onSelect?: () => void
   onTogglePin: (session: SessionMeta) => void
@@ -116,6 +124,7 @@ function FolderNameEditor({
 
 export function SessionFolderTree({
   sessions,
+  allSessions,
   activeFriendlyId,
   onSelect,
   onTogglePin,
@@ -143,11 +152,19 @@ export function SessionFolderTree({
 
   // Drop client-side placeholders once real sessions back the folder.
   useEffect(() => {
-    const pruned = prunePendingFolders(pendingFolders, sessions)
+    const pruned = prunePendingFolders(pendingFolders, allSessions)
     if (pruned.length !== pendingFolders.length) setPendingFolders(pruned)
-  }, [pendingFolders, sessions, setPendingFolders])
+  }, [pendingFolders, allSessions, setPendingFolders])
 
-  const tree = buildSessionFolderTree(sessions, pendingFolders)
+  // Seed nodes from every session's folderPath (not just the rendered
+  // unpinned ones) so a folder whose only sessions are pinned still shows.
+  const seedPaths = [
+    ...pendingFolders,
+    ...allSessions
+      .map((s) => s.folderPath)
+      .filter((p): p is string => typeof p === 'string' && p.length > 0),
+  ]
+  const tree = buildSessionFolderTree(sessions, seedPaths)
   const hasFolders = tree.children.length > 0
 
   function dropHandlers(folderPath: string | null) {
@@ -207,8 +224,9 @@ export function SessionFolderTree({
     setBusy(true)
     try {
       // No folder entity server-side: rename = prefix-rewrite every session
-      // filed at or under this path, then rewrite local collapse/pending.
-      for (const session of sessionsUnderFolder(sessions, node.path)) {
+      // filed at or under this path (incl. pinned ones not rendered in the
+      // tree), then rewrite local collapse/pending.
+      for (const session of sessionsUnderFolder(allSessions, node.path)) {
         await patchSessionFolder(
           session.key,
           session.friendlyId,
@@ -233,7 +251,7 @@ export function SessionFolderTree({
     setFolderError(null)
     setBusy(true)
     try {
-      for (const session of sessionsUnderFolder(sessions, node.path)) {
+      for (const session of sessionsUnderFolder(allSessions, node.path)) {
         await patchSessionFolder(session.key, session.friendlyId, null)
       }
       forgetFolder(node.path)

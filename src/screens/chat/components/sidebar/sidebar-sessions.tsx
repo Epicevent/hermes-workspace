@@ -132,6 +132,7 @@ export const SidebarSessions = memo(function SidebarSessions({
                   ) : null}
                   <SessionFolderTree
                     sessions={unpinnedSessions}
+                    allSessions={sessions}
                     activeFriendlyId={activeFriendlyId}
                     onSelect={onSelect}
                     onTogglePin={handleTogglePin}
