@@ -202,7 +202,9 @@ jobs:
           file: ./Dockerfile.runtime
           platforms: linux/amd64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.RUNTIME_IMAGE_NAME }}:owner-main-${{ github.sha }}
+          # metadata-action lowercases the repo owner for the main build; a raw
+          # tag string must do it by hand (ghcr rejects uppercase).
+          tags: ghcr.io/epicevent/hermes-runtime:owner-main-${{ github.sha }}
           build-args: |
             HERMES_WORKSPACE_GIT_SHA=${{ github.sha }}
             HERMES_VERSIONS_MODE=owner
