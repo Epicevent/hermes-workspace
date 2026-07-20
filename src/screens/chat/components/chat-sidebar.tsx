@@ -32,11 +32,13 @@ import { useChatSettings as useSidebarSettings } from '../hooks/use-chat-setting
 import { useDeleteSession } from '../hooks/use-delete-session'
 import { useRenameSession } from '../hooks/use-rename-session'
 import { ProvidersDialog } from './providers-dialog'
+import { WhatsNewDialog } from './whats-new-dialog'
 import { SessionRenameDialog } from './sidebar/session-rename-dialog'
 import { SessionDeleteDialog } from './sidebar/session-delete-dialog'
 import { SidebarSessions } from './sidebar/sidebar-sessions'
 import type { ChatOpenSettingsDetail } from '../chat-events'
 import type { SessionMeta } from '../types'
+import { VERSIONS } from '@/versions'
 import { t } from '@/lib/i18n'
 import { SettingsDialog } from '@/components/settings-dialog'
 import {
@@ -633,6 +635,7 @@ function ChatSidebarComponent({
   const [deleteFriendlyId, setDeleteFriendlyId] = useState<string | null>(null)
   const [deleteSessionTitle, setDeleteSessionTitle] = useState('')
   const [providersOpen, setProvidersOpen] = useState(false)
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [isHoverExpanded, setIsHoverExpanded] = useState(false)
   const sidebarHoverExpand = useChatSettingsStore(selectSidebarHoverExpand)
@@ -1244,6 +1247,16 @@ function ChatSidebarComponent({
             </div>
           )}
         </div>
+        {!isVisuallyCollapsed && VERSIONS[0] ? (
+          <button
+            type="button"
+            onClick={() => setWhatsNewOpen(true)}
+            className="mt-0.5 block w-full rounded px-3.5 text-left text-[11px] text-primary-400 transition-colors hover:text-primary-600 dark:hover:text-neutral-300"
+            aria-label="What's new"
+          >
+            {VERSIONS[0].version}
+          </button>
+        ) : null}
       </div>
 
       {/* ── Dialogs ─────────────────────────────────────────────────── */}
@@ -1254,6 +1267,8 @@ function ChatSidebarComponent({
       />
 
       <ProvidersDialog open={providersOpen} onOpenChange={setProvidersOpen} />
+
+      <WhatsNewDialog open={whatsNewOpen} onOpenChange={setWhatsNewOpen} />
 
       <SessionRenameDialog
         open={renameDialogOpen}
