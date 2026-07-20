@@ -33,7 +33,7 @@ jobs:
           curl -fsSL -o /tmp/gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
-          /tmp/gitleaks detect --source . --no-banner --redact --exit-code 1
+          /tmp/gitleaks detect --source . --no-banner --redact --exit-code 1 --config .gitleaks.toml
 
       - name: Grep for common patterns (fallback)
         if: always()

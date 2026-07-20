@@ -1,0 +1,19 @@
+# Gitleaks config — full-history scans run in CI (security.yml).
+# Every entry here is a TRIAGED false positive; do not add real secrets.
+# Triage 2026-07-20: 18/18 historical findings were false positives.
+
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  # Deliberate fake secrets exercising the redaction pipeline.
+  '''scripts/qa/test-redaction\.ts''',
+  # Committed build artifact: base64 WASM blobs coincidentally matching
+  # aws-access-token, plus minified identifiers (keyPath/KeyMap/Key =).
+  '''electron/server-bundle\.cjs''',
+]
+# OAuth PUBLIC client identifiers (no client_secret involved) — the same id
+# ships in every client install; not a credential.
+regexTarget = "line"
+regexes = ['''CLIENT_ID''']
