@@ -44,3 +44,41 @@ export function mergeVersionOverlay(
 export function currentVersion(entries: Array<VersionEntry>): string {
   return entries[0]?.version ?? ''
 }
+
+export const VERSION_NOTE_MAX_NOTES = 10
+export const VERSION_NOTE_MAX_NOTE_LENGTH = 300
+const VERSION_RE = /^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}(-[0-9]+)?$/
+const DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/
+
+/**
+ * Upsert an operator-written note entry into the overlay list (newest-first,
+ * replacing an existing entry for the same version). Same rules as the
+ * opsctl `runtime version-note` writer — the two pens must stay in lockstep.
+ * Throws on invalid input.
+ */
+export function upsertVersionNote(
+  entries: Array<VersionEntry>,
+  version: string,
+  notes: Array<string>,
+  date = '',
+): Array<VersionEntry> {
+  if (!VERSION_RE.test(version)) {
+    throw new Error(`invalid version (CalVer YYYY.M.D[-N] expected): ${version}`)
+  }
+  if (date && !DATE_RE.test(date)) {
+    throw new Error(`invalid date (YYYY-MM-DD expected): ${date}`)
+  }
+  const cleaned = notes.map((note) => note.trim()).filter((note) => note.length > 0)
+  if (cleaned.length > VERSION_NOTE_MAX_NOTES) {
+    throw new Error(`too many notes (max ${VERSION_NOTE_MAX_NOTES})`)
+  }
+  for (const note of cleaned) {
+    if (note.length > VERSION_NOTE_MAX_NOTE_LENGTH) {
+      throw new Error(`note too long (max ${VERSION_NOTE_MAX_NOTE_LENGTH} chars)`)
+    }
+  }
+  const entry: VersionEntry = { version, date, notes: cleaned }
+  const remaining = entries.filter((e) => e.version !== version)
+  // An empty notes list clears the operator entry for that version.
+  return cleaned.length === 0 ? remaining : [entry, ...remaining]
+}
