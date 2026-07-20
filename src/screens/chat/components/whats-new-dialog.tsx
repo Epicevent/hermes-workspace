@@ -77,13 +77,15 @@ export function WhatsNewDialog({ open, onOpenChange }: WhatsNewDialogProps) {
                       {entry.date}
                     </span>
                   </div>
-                  <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-5">
-                    {entry.notes.map((note) => (
-                      <li key={note} className="text-sm text-primary-800">
-                        {note}
-                      </li>
-                    ))}
-                  </ul>
+                  {entry.notes.length > 0 ? (
+                    <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-5">
+                      {entry.notes.map((note) => (
+                        <li key={note} className="text-sm text-primary-800">
+                          {note}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               ))}
             </div>
