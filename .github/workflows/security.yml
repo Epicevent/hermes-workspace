@@ -23,11 +23,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # No additional secrets required - uses built-in GITHUB_TOKEN
+      # gitleaks-action@v2 started hard-failing without a GITLEAKS_LICENSE
+      # (2026-07-20; the action's license gate, not a finding). The CLI needs
+      # no license, so run the same scan directly.
+      - name: Run Gitleaks (CLI)
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.18.4
+          curl -fsSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks detect --source . --no-banner --redact --exit-code 1 --config .gitleaks.toml
 
       - name: Grep for common patterns (fallback)
         if: always()
