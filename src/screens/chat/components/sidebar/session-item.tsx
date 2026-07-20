@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Delete01Icon,
+  Folder01Icon,
   MoreHorizontalIcon,
   Pen01Icon,
   PinIcon,
@@ -26,6 +27,12 @@ type SessionItemProps = {
   isPinned: boolean
   /** Enable drag-to-folder (sidebar folder tree drop targets). */
   draggable?: boolean
+  /**
+   * Folder paths offered in the menu. Dragging is not the only way to file a
+   * session — picking a folder here does the same move without a drag.
+   */
+  folderOptions?: Array<string>
+  onMoveToFolder?: (session: SessionMeta, folderPath: string | null) => void
   onSelect?: () => void
   onTogglePin: (session: SessionMeta) => void
   onRename: (session: SessionMeta) => void
@@ -104,6 +111,8 @@ function SessionItemComponent({
   active,
   isPinned,
   draggable = false,
+  folderOptions,
+  onMoveToFolder,
   onSelect,
   onTogglePin,
   onRename,
@@ -227,6 +236,41 @@ function SessionItemComponent({
             <HugeiconsIcon icon={Pen01Icon} size={20} strokeWidth={1.5} />{' '}
             Rename
           </MenuItem>
+          {onMoveToFolder
+            ? (folderOptions ?? [])
+                .filter((path) => path !== session.folderPath)
+                .map((path) => (
+                  <MenuItem
+                    key={path}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onMoveToFolder(session, path)
+                    }}
+                    className="gap-2"
+                  >
+                    <HugeiconsIcon
+                      icon={Folder01Icon}
+                      size={20}
+                      strokeWidth={1.5}
+                    />{' '}
+                    이동: {path}
+                  </MenuItem>
+                ))
+            : null}
+          {onMoveToFolder && session.folderPath ? (
+            <MenuItem
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onMoveToFolder(session, null)
+              }}
+              className="gap-2"
+            >
+              <HugeiconsIcon icon={Folder01Icon} size={20} strokeWidth={1.5} />{' '}
+              폴더에서 빼기
+            </MenuItem>
+          ) : null}
           <MenuItem
             onClick={(event) => {
               event.preventDefault()
@@ -248,6 +292,12 @@ function areSessionItemsEqual(prev: SessionItemProps, next: SessionItemProps) {
   if (prev.active !== next.active) return false
   if (prev.isPinned !== next.isPinned) return false
   if (prev.draggable !== next.draggable) return false
+  if (prev.onMoveToFolder !== next.onMoveToFolder) return false
+  if (
+    (prev.folderOptions ?? []).join(' ') !==
+    (next.folderOptions ?? []).join(' ')
+  )
+    return false
   if (prev.onSelect !== next.onSelect) return false
   if (prev.onTogglePin !== next.onTogglePin) return false
   if (prev.onRename !== next.onRename) return false
