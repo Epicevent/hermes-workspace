@@ -191,16 +191,16 @@ jobs:
 
       # Owner-mode variant (OpenClaw parity): identical image except
       # HERMES_VERSIONS_MODE=owner — deployed ONLY to the operator's dev slot,
-      # where the What's new dialog gains inline note editing. Reuses the
-      # cache from the build above (differs by one ENV layer), amd64 only
-      # (it never runs anywhere but the JI server).
+      # where the What's new dialog gains inline note editing. Multi-arch like
+      # the main build (the wrapper pipeline resolves both platforms); reuses
+      # the cache above, so the delta is one ENV layer per platform.
       - name: Build & push runtime (owner variant)
         if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.runtime
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           # metadata-action lowercases the repo owner for the main build; a raw
           # tag string must do it by hand (ghcr rejects uppercase).
