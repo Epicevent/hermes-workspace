@@ -1,6 +1,7 @@
 import { Cancel01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import type { VersionEntry } from '@/versions'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,12 +19,77 @@ type WhatsNewDialogProps = {
 
 type VersionsResponse = {
   ok?: boolean
+  mode?: 'owner' | 'customer'
   current?: string
   build?: string
   versions?: Array<VersionEntry>
 }
 
+/**
+ * Owner-mode inline note editor (OpenClaw version-history parity): one
+ * textarea per version, one bullet per line, saved live into the slot's
+ * overlay — no rebuild. Only rendered on owner-mode images (the operator's
+ * dev slot); customer images never see it and the server 403s anyway.
+ */
+function NoteEditor({
+  entry,
+  onSaved,
+}: {
+  entry: VersionEntry
+  onSaved: () => void
+}) {
+  const [value, setValue] = useState(entry.notes.join('\n'))
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/versions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          version: entry.version,
+          date: entry.date,
+          notes: value.split('\n'),
+        }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as {
+          error?: string
+        } | null
+        throw new Error(data?.error || 'Failed to save')
+      }
+    },
+    onSuccess: () => {
+      setError(null)
+      onSaved()
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  })
+  return (
+    <div className="mt-1.5">
+      <textarea
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder="패치노트 입력 — 한 줄이 한 항목"
+        rows={Math.max(2, value.split('\n').length)}
+        className="w-full resize-y rounded-md border border-primary-300 bg-primary-50 px-2 py-1.5 text-sm text-primary-950 outline-none focus:border-primary-500"
+      />
+      <div className="mt-1 flex items-center justify-end gap-2">
+        {error ? <span className="text-[11px] text-red-600">{error}</span> : null}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate()}
+        >
+          저장
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function WhatsNewDialog({ open, onOpenChange }: WhatsNewDialogProps) {
+  const queryClient = useQueryClient()
   const { data } = useQuery({
     queryKey: ['versions'],
     queryFn: async (): Promise<VersionsResponse> => {
@@ -35,6 +101,7 @@ export function WhatsNewDialog({ open, onOpenChange }: WhatsNewDialogProps) {
     staleTime: 5 * 60 * 1000,
   })
   const versions = data?.versions ?? []
+  const isOwner = data?.mode === 'owner'
 
   return (
     <DialogRoot open={open} onOpenChange={onOpenChange}>
@@ -77,7 +144,16 @@ export function WhatsNewDialog({ open, onOpenChange }: WhatsNewDialogProps) {
                       {entry.date}
                     </span>
                   </div>
-                  {entry.notes.length > 0 ? (
+                  {isOwner ? (
+                    <NoteEditor
+                      entry={entry}
+                      onSaved={() =>
+                        void queryClient.invalidateQueries({
+                          queryKey: ['versions'],
+                        })
+                      }
+                    />
+                  ) : entry.notes.length > 0 ? (
                     <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-5">
                       {entry.notes.map((note) => (
                         <li key={note} className="text-sm text-primary-800">

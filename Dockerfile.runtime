@@ -17,6 +17,11 @@ ARG HERMES_AGENT_BASE
 ARG HERMES_WORKSPACE_GIT_SHA=""
 # Runtime-visible build identity for the What's new dialog (/api/versions).
 ENV HERMES_BUILD_SHA="${HERMES_WORKSPACE_GIT_SHA}"
+# OpenClaw-parity versions mode, baked per image variant: "customer"
+# (default; read-only What's new) or "owner" (the operator's dev-slot build —
+# the dialog gains inline note editing saved to the live overlay).
+ARG HERMES_VERSIONS_MODE="customer"
+ENV HERMES_VERSIONS_MODE="${HERMES_VERSIONS_MODE}"
 
 LABEL org.opencontainers.image.title="JI TECH Hermes runtime"
 LABEL org.opencontainers.image.description="Hermes Agent gateway, dashboard, and Workspace UI in one runtime image"

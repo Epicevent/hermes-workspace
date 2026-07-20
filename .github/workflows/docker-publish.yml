@@ -188,3 +188,22 @@ jobs:
             HERMES_WORKSPACE_GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Owner-mode variant (OpenClaw parity): identical image except
+      # HERMES_VERSIONS_MODE=owner — deployed ONLY to the operator's dev slot,
+      # where the What's new dialog gains inline note editing. Reuses the
+      # cache from the build above (differs by one ENV layer), amd64 only
+      # (it never runs anywhere but the JI server).
+      - name: Build & push runtime (owner variant)
+        if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.runtime
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.RUNTIME_IMAGE_NAME }}:owner-main-${{ github.sha }}
+          build-args: |
+            HERMES_WORKSPACE_GIT_SHA=${{ github.sha }}
+            HERMES_VERSIONS_MODE=owner
+          cache-from: type=gha
