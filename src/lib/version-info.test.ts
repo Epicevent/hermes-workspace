@@ -76,6 +76,27 @@ describe('upsertVersionNote', () => {
     expect(entries).toEqual([])
   })
 
+  it('keeps publishing separate from writing', () => {
+    // writing a note does not publish it
+    let entries = upsertVersionNote([], '2026.7.21', ['초안'])
+    expect(entries[0].customerRelease).toBeUndefined()
+    // publishing is an explicit act
+    entries = upsertVersionNote(entries, '2026.7.21', ['초안'], '', true)
+    expect(entries[0].customerRelease).toBe(true)
+    // a later edit without an explicit flag keeps it published
+    entries = upsertVersionNote(entries, '2026.7.21', ['고친 문구'])
+    expect(entries[0].customerRelease).toBe(true)
+    // and it can be pulled back
+    entries = upsertVersionNote(entries, '2026.7.21', ['고친 문구'], '', false)
+    expect(entries[0].customerRelease).toBeUndefined()
+  })
+
+  it('keeps a published entry even with no notes, drops an unpublished empty one', () => {
+    const published = upsertVersionNote([], '2026.7.21', [], '', true)
+    expect(published).toHaveLength(1)
+    expect(upsertVersionNote([], '2026.7.21', [], '', false)).toEqual([])
+  })
+
   it('rejects bad version, bad date, and oversize input', () => {
     expect(() => upsertVersionNote([], 'v1', ['x'])).toThrow()
     expect(() => upsertVersionNote([], '2026.7.17', ['x'], '17-07-2026')).toThrow()

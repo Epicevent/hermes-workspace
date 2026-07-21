@@ -7,10 +7,11 @@
  * the image as HERMES_VERSION, so two different images can never report the
  * same version. See src/routes/api/versions.ts.
  *
- * Which builds customers SEE is curated by the operator: a build appears in
- * the customer dialog once he writes a note for it (the version-notes
- * overlay) — the same role OpenClaw's CUSTOMER_RELEASE flag plays. Builds
- * without notes stay visible only on the owner image.
+ * Which builds customers SEE is curated EXPLICITLY by the operator, the same
+ * way OpenClaw does it (its build history carries `customerRelease`): a build
+ * reaches the customer dialog only when it is marked as a customer release.
+ * Writing a note is not the same act as publishing it — an unmarked build,
+ * notes or not, stays visible on the owner image only.
  */
 export type VersionEntry = {
   /** CalVer display name of the image build, e.g. "2026.7.21" or "2026.7.21-2". */
@@ -19,4 +20,6 @@ export type VersionEntry = {
   date: string
   /** Customer-facing notes — operator-authored via the overlay. */
   notes: Array<string>
+  /** Explicitly published to customers (OpenClaw's `customerRelease`). */
+  customerRelease?: boolean
 }

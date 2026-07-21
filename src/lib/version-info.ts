@@ -35,6 +35,7 @@ export function mergeVersionOverlay(
       version: entry.version,
       date: typeof override.date === 'string' && override.date ? override.date : entry.date,
       notes: override.notes,
+      ...(override.customerRelease ? { customerRelease: true } : {}),
     }
   })
   return [...byVersion.values(), ...merged]
@@ -61,6 +62,7 @@ export function upsertVersionNote(
   version: string,
   notes: Array<string>,
   date = '',
+  customerRelease?: boolean,
 ): Array<VersionEntry> {
   if (!VERSION_RE.test(version)) {
     throw new Error(`invalid version (CalVer YYYY.M.D[-N] expected): ${version}`)
@@ -77,8 +79,18 @@ export function upsertVersionNote(
       throw new Error(`note too long (max ${VERSION_NOTE_MAX_NOTE_LENGTH} chars)`)
     }
   }
-  const entry: VersionEntry = { version, date, notes: cleaned }
+  const previous = entries.find((e) => e.version === version)
+  // Publishing is a separate act from writing: keep the previous flag unless
+  // this call states one explicitly.
+  const published = customerRelease ?? previous?.customerRelease ?? false
+  const entry: VersionEntry = {
+    version,
+    date,
+    notes: cleaned,
+    ...(published ? { customerRelease: true } : {}),
+  }
   const remaining = entries.filter((e) => e.version !== version)
-  // An empty notes list clears the operator entry for that version.
-  return cleaned.length === 0 ? remaining : [entry, ...remaining]
+  // Nothing left to remember: no notes and not published.
+  if (cleaned.length === 0 && !published) return remaining
+  return [entry, ...remaining]
 }
