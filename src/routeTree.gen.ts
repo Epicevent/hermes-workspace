@@ -40,6 +40,7 @@ import { Route as ReserveConfirmRouteImport } from './routes/reserve/confirm'
 import { Route as ChatSessionKeyRouteImport } from './routes/chat/$sessionKey'
 import { Route as ApiWorkspaceRouteImport } from './routes/api/workspace'
 import { Route as ApiVtCapitalRouteImport } from './routes/api/vt-capital'
+import { Route as ApiVersionsRouteImport } from './routes/api/versions'
 import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
 import { Route as ApiTerminalStreamRouteImport } from './routes/api/terminal-stream'
 import { Route as ApiTerminalResizeRouteImport } from './routes/api/terminal-resize'
@@ -324,6 +325,11 @@ const ApiWorkspaceRoute = ApiWorkspaceRouteImport.update({
 const ApiVtCapitalRoute = ApiVtCapitalRouteImport.update({
   id: '/api/vt-capital',
   path: '/api/vt-capital',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiVersionsRoute = ApiVersionsRouteImport.update({
+  id: '/api/versions',
+  path: '/api/versions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTranscribeRoute = ApiTranscribeRouteImport.update({
@@ -1083,6 +1089,7 @@ export interface FileRoutesByFullPath {
   '/api/terminal-resize': typeof ApiTerminalResizeRoute
   '/api/terminal-stream': typeof ApiTerminalStreamRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/versions': typeof ApiVersionsRoute
   '/api/vt-capital': typeof ApiVtCapitalRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
@@ -1245,6 +1252,7 @@ export interface FileRoutesByTo {
   '/api/terminal-resize': typeof ApiTerminalResizeRoute
   '/api/terminal-stream': typeof ApiTerminalStreamRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/versions': typeof ApiVersionsRoute
   '/api/vt-capital': typeof ApiVtCapitalRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
@@ -1409,6 +1417,7 @@ export interface FileRoutesById {
   '/api/terminal-resize': typeof ApiTerminalResizeRoute
   '/api/terminal-stream': typeof ApiTerminalStreamRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/versions': typeof ApiVersionsRoute
   '/api/vt-capital': typeof ApiVtCapitalRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
@@ -1574,6 +1583,7 @@ export interface FileRouteTypes {
     | '/api/terminal-resize'
     | '/api/terminal-stream'
     | '/api/transcribe'
+    | '/api/versions'
     | '/api/vt-capital'
     | '/api/workspace'
     | '/chat/$sessionKey'
@@ -1736,6 +1746,7 @@ export interface FileRouteTypes {
     | '/api/terminal-resize'
     | '/api/terminal-stream'
     | '/api/transcribe'
+    | '/api/versions'
     | '/api/vt-capital'
     | '/api/workspace'
     | '/chat/$sessionKey'
@@ -1899,6 +1910,7 @@ export interface FileRouteTypes {
     | '/api/terminal-resize'
     | '/api/terminal-stream'
     | '/api/transcribe'
+    | '/api/versions'
     | '/api/vt-capital'
     | '/api/workspace'
     | '/chat/$sessionKey'
@@ -2063,6 +2075,7 @@ export interface RootRouteChildren {
   ApiTerminalResizeRoute: typeof ApiTerminalResizeRoute
   ApiTerminalStreamRoute: typeof ApiTerminalStreamRoute
   ApiTranscribeRoute: typeof ApiTranscribeRoute
+  ApiVersionsRoute: typeof ApiVersionsRoute
   ApiVtCapitalRoute: typeof ApiVtCapitalRoute
   ApiWorkspaceRoute: typeof ApiWorkspaceRoute
   ChatSessionKeyRoute: typeof ChatSessionKeyRoute
@@ -2315,6 +2328,13 @@ declare module '@tanstack/react-router' {
       path: '/api/vt-capital'
       fullPath: '/api/vt-capital'
       preLoaderRoute: typeof ApiVtCapitalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/versions': {
+      id: '/api/versions'
+      path: '/api/versions'
+      fullPath: '/api/versions'
+      preLoaderRoute: typeof ApiVersionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/transcribe': {
@@ -3540,6 +3560,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTerminalResizeRoute: ApiTerminalResizeRoute,
   ApiTerminalStreamRoute: ApiTerminalStreamRoute,
   ApiTranscribeRoute: ApiTranscribeRoute,
+  ApiVersionsRoute: ApiVersionsRoute,
   ApiVtCapitalRoute: ApiVtCapitalRoute,
   ApiWorkspaceRoute: ApiWorkspaceRoute,
   ChatSessionKeyRoute: ChatSessionKeyRoute,
