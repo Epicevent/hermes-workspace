@@ -68,6 +68,34 @@ function hasSessionDrag(event: React.DragEvent): boolean {
   return Array.from(event.dataTransfer.types).includes(SESSION_DRAG_MIME)
 }
 
+/**
+ * Drop highlight is applied by mutating the node's class list, NOT React state.
+ * `dragover` fires continuously while the pointer moves, so a setState here
+ * re-rendered the whole tree dozens of times a second and made the drag feel
+ * heavy. This mirrors the OpenClaw implementation (classList.add/remove on
+ * event.currentTarget).
+ */
+const DROP_OVER_CLASS = 'bg-primary-300/60'
+
+function setDropOver(target: EventTarget | null, on: boolean): void {
+  const node = target as HTMLElement | null
+  if (!node?.classList) return
+  if (on) node.classList.add(DROP_OVER_CLASS)
+  else node.classList.remove(DROP_OVER_CLASS)
+}
+
+/** All folder paths in the tree, parents included, for the move-to menu. */
+function collectFolderPaths(
+  node: SessionFolderNode,
+  out: Array<string> = [],
+): Array<string> {
+  for (const child of node.children) {
+    out.push(child.path)
+    collectFolderPaths(child, out)
+  }
+  return out
+}
+
 async function patchSessionFolder(
   sessionKey: string,
   friendlyId: string | undefined,
@@ -143,7 +171,6 @@ export function SessionFolderTree({
   } = useSessionFolders()
   const { moveSessionToFolder } = useMoveSessionToFolder()
 
-  const [dragOverPath, setDragOverPath] = useState<string | null>(null)
   // '' = creating at root, otherwise the parent folder's path; null = idle.
   const [createParent, setCreateParent] = useState<string | null>(null)
   const [editPath, setEditPath] = useState<string | null>(null)
@@ -166,23 +193,33 @@ export function SessionFolderTree({
   ]
   const tree = buildSessionFolderTree(sessions, seedPaths)
   const hasFolders = tree.children.length > 0
+  const folderOptions = collectFolderPaths(tree)
 
   function dropHandlers(folderPath: string | null) {
     return {
       onDragOver: (event: React.DragEvent) => {
         if (!hasSessionDrag(event)) return
         event.preventDefault()
+        event.stopPropagation()
         event.dataTransfer.dropEffect = 'move'
-        setDragOverPath(folderPath ?? '')
+        setDropOver(event.currentTarget, true)
       },
-      onDragLeave: () => setDragOverPath(null),
+      onDragLeave: (event: React.DragEvent) => {
+        // Leaving into a descendant (the row holds a button and icons) is not
+        // leaving the drop zone — without this guard the highlight flickers
+        // on every internal boundary.
+        const next = event.relatedTarget as Node | null
+        if (next && (event.currentTarget as HTMLElement).contains(next)) return
+        setDropOver(event.currentTarget, false)
+      },
       onDrop: (event: React.DragEvent) => {
         if (!hasSessionDrag(event)) return
         event.preventDefault()
-        setDragOverPath(null)
+        event.stopPropagation()
+        setDropOver(event.currentTarget, false)
         const payload = readDragPayload(event)
         if (!payload) return
-        const current = sessions.find((s) => s.key === payload.key)
+        const current = allSessions.find((s) => s.key === payload.key)
         if (current && (current.folderPath ?? null) === folderPath) return
         void moveSessionToFolder(
           payload.key,
@@ -191,6 +228,11 @@ export function SessionFolderTree({
         )
       },
     }
+  }
+
+  function moveToFolder(session: SessionMeta, folderPath: string | null) {
+    if ((session.folderPath ?? null) === folderPath) return
+    void moveSessionToFolder(session.key, session.friendlyId, folderPath)
   }
 
   function commitCreate(parent: string, value: string) {
@@ -266,16 +308,10 @@ export function SessionFolderTree({
   function renderFolder(node: SessionFolderNode, depth: number) {
     const collapsed = collapsedFolders[node.path] ?? false
     const count = countFolderSessions(node)
-    const isDropTarget = dragOverPath === node.path
     return (
       <div key={node.path}>
         <div
-          className={cn(
-            'group flex h-8 items-center rounded-lg pr-0.5 transition-colors',
-            isDropTarget
-              ? 'bg-primary-300/70'
-              : 'hover:bg-primary-200',
-          )}
+          className="group flex h-8 items-center rounded-lg pr-0.5 transition-colors hover:bg-primary-200"
           style={{ paddingLeft: `${6 + depth * 12}px` }}
           {...dropHandlers(node.path)}
         >
@@ -390,6 +426,8 @@ export function SessionFolderTree({
                   active={session.friendlyId === activeFriendlyId}
                   isPinned={false}
                   draggable
+                  folderOptions={folderOptions}
+                  onMoveToFolder={moveToFolder}
                   onSelect={onSelect}
                   onTogglePin={onTogglePin}
                   onRename={onRename}
@@ -435,10 +473,7 @@ export function SessionFolderTree({
         <div className="my-1 border-t border-primary-200/80" />
       ) : null}
       <div
-        className={cn(
-          'flex flex-col gap-px rounded-lg transition-colors',
-          dragOverPath === '' ? 'bg-primary-300/40' : undefined,
-        )}
+        className="flex min-h-8 flex-col gap-px rounded-lg transition-colors"
         {...dropHandlers(null)}
       >
         {tree.sessions.map((session) => (
@@ -448,6 +483,8 @@ export function SessionFolderTree({
             active={session.friendlyId === activeFriendlyId}
             isPinned={false}
             draggable
+            folderOptions={folderOptions}
+            onMoveToFolder={moveToFolder}
             onSelect={onSelect}
             onTogglePin={onTogglePin}
             onRename={onRename}
