@@ -27,6 +27,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { CHAT_OPEN_SETTINGS_EVENT } from '../chat-events'
 import { useChatSettings as useSidebarSettings } from '../hooks/use-chat-settings'
 import { useDeleteSession } from '../hooks/use-delete-session'
@@ -38,7 +39,6 @@ import { SessionDeleteDialog } from './sidebar/session-delete-dialog'
 import { SidebarSessions } from './sidebar/sidebar-sessions'
 import type { ChatOpenSettingsDetail } from '../chat-events'
 import type { SessionMeta } from '../types'
-import { VERSIONS } from '@/versions'
 import { t } from '@/lib/i18n'
 import { SettingsDialog } from '@/components/settings-dialog'
 import {
@@ -636,6 +636,19 @@ function ChatSidebarComponent({
   const [deleteSessionTitle, setDeleteSessionTitle] = useState('')
   const [providersOpen, setProvidersOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
+  // The running image's own CalVer name, baked per build and served by
+  // /api/versions — shown in the footer so a slot always states which image
+  // it is running.
+  const { data: versionsInfo } = useQuery({
+    queryKey: ['versions'],
+    queryFn: async (): Promise<{ current?: string }> => {
+      const res = await fetch('/api/versions')
+      if (!res.ok) throw new Error('Failed to load versions')
+      return (await res.json()) as { current?: string }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  const buildVersion = versionsInfo?.current ?? ''
   const [isMobile, setIsMobile] = useState(false)
   const [isHoverExpanded, setIsHoverExpanded] = useState(false)
   const sidebarHoverExpand = useChatSettingsStore(selectSidebarHoverExpand)
@@ -1247,14 +1260,14 @@ function ChatSidebarComponent({
             </div>
           )}
         </div>
-        {!isVisuallyCollapsed && VERSIONS[0] ? (
+        {!isVisuallyCollapsed && buildVersion ? (
           <button
             type="button"
             onClick={() => setWhatsNewOpen(true)}
             className="mt-0.5 block w-full rounded px-3.5 text-left text-[11px] text-primary-400 transition-colors hover:text-primary-600 dark:hover:text-neutral-300"
             aria-label="What's new"
           >
-            {VERSIONS[0].version}
+            {buildVersion}
           </button>
         ) : null}
       </div>
