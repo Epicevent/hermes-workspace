@@ -83,6 +83,45 @@ function getSessionShortId(session: SessionMeta): string {
   return ''
 }
 
+/**
+ * Build a solid, readable drag preview and hand it to the browser.
+ *
+ * The element must be in the document for the snapshot to include styles, so
+ * it is appended off-screen and removed on the next tick — by then the browser
+ * has already captured it (the snapshot is synchronous inside dragstart).
+ */
+function setSessionDragPreview(event: React.DragEvent, title: string): void {
+  if (typeof document === 'undefined') return
+  try {
+    const ghost = document.createElement('div')
+    ghost.textContent = title
+    const rect = event.currentTarget.getBoundingClientRect()
+    Object.assign(ghost.style, {
+      position: 'fixed',
+      top: '-1000px',
+      left: '-1000px',
+      width: `${Math.max(180, Math.round(rect.width))}px`,
+      padding: '10px 12px',
+      borderRadius: '10px',
+      // Inherit the live theme instead of hardcoding light/dark colors.
+      background: 'var(--color-primary-200, #e7e5e4)',
+      color: 'var(--color-primary-950, #0c0a09)',
+      border: '1px solid var(--color-primary-400, #a8a29e)',
+      boxShadow: '0 6px 16px rgba(0,0,0,0.28)',
+      font: '500 13px/1.3 system-ui, sans-serif',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      pointerEvents: 'none',
+    })
+    document.body.appendChild(ghost)
+    event.dataTransfer.setDragImage(ghost, 16, 20)
+    window.setTimeout(() => ghost.remove(), 0)
+  } catch {
+    // A failed preview must never block the drag itself.
+  }
+}
+
 function getSessionDisplayTitle(
   session: SessionMeta,
   isGenerating: boolean,
@@ -155,6 +194,13 @@ function SessionItemComponent({
                   friendlyId: session.friendlyId,
                 }),
               )
+              // Solid drag preview — you must SEE the block you're carrying.
+              // The browser's default ghost snapshots the row as-is, and this
+              // row is bg-transparent (it only paints on hover), so the default
+              // comes out as faint floating text. OpenClaw gets a solid
+              // rectangle for free because its row paints a background; we make
+              // it explicit instead of depending on that.
+              setSessionDragPreview(event, baseTitle)
             }
           : undefined
       }
@@ -168,6 +214,8 @@ function SessionItemComponent({
         'group inline-flex items-center justify-between',
         'w-full text-left pl-1.5 pr-0.5 h-14 rounded-lg transition-colors duration-0',
         'select-none',
+        // grab affordance (OpenClaw parity): the row announces it can be moved
+        draggable ? 'cursor-grab active:cursor-grabbing' : undefined,
         active
           ? 'bg-primary-200 text-primary-950'
           : 'bg-transparent text-primary-950 [&:hover:not(:has(button:hover))]:bg-primary-200',
