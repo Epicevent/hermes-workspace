@@ -5,29 +5,37 @@ import { json } from '@tanstack/react-start'
 import { isAuthenticated } from '../../server/auth-middleware'
 import { requireJsonContentType } from '../../server/rate-limit'
 import type { VersionEntry } from '@/versions'
-import { VERSIONS } from '@/versions'
-import {
-  currentVersion,
-  mergeVersionOverlay,
-  upsertVersionNote,
-} from '@/lib/version-info'
+import { mergeVersionOverlay, upsertVersionNote } from '@/lib/version-info'
 
 /**
- * Release timeline for the in-app "What's new" dialog.
+ * Release timeline for the in-app "What's new" dialog (OpenClaw model).
  *
- * Baked entries (src/versions.ts, version/date skeleton) merged with the
- * per-slot overlay `<HERMES_HOME>/version-notes.json`, which carries the
- * operator-written patch notes.
+ * A version identifies an IMAGE BUILD: CI bakes HERMES_VERSION (CalVer) and
+ * HERMES_BUILD_SHA into each image, so two different images never report the
+ * same version — that is what makes the dialog usable for "what is this slot
+ * actually running".
  *
- * Mode (OpenClaw parity): the image is built as either `owner` or `customer`
- * (HERMES_VERSIONS_MODE, baked by Dockerfile.runtime). Owner-mode images —
- * deployed to the operator's dev slot only — expose note EDITING: the dialog
- * shows a textarea per version and saves through POST here, straight into
- * the overlay (live, no rebuild). Customer images are read-only; POST
- * answers 403 even if called directly.
+ * The list is assembled from:
+ *   - the operator's notes overlay (<HERMES_HOME>/version-notes.json), which
+ *     is also the CURATION: a build reaches customers once he writes a note
+ *     for it (OpenClaw does the same with its CUSTOMER_RELEASE flag);
+ *   - plus THIS build, always shown on the owner image so he can write the
+ *     note for the build he is looking at.
  */
 function versionsMode(): 'owner' | 'customer' {
   return process.env.HERMES_VERSIONS_MODE === 'owner' ? 'owner' : 'customer'
+}
+
+function buildVersion(): string {
+  return (process.env.HERMES_VERSION || '').trim()
+}
+
+function buildDate(): string {
+  // Baked at build time; fall back to today so a locally-run dev server still
+  // renders something sane.
+  const stamped = (process.env.HERMES_BUILD_DATE || '').trim()
+  if (stamped) return stamped
+  return new Date().toISOString().slice(0, 10)
 }
 
 function overlayPath(): string | null {
@@ -54,6 +62,17 @@ async function writeOverlay(entries: Array<VersionEntry>): Promise<void> {
   await rename(tmp, path)
 }
 
+/**
+ * Notes (curated releases) + this build. On the owner image the running build
+ * is always present even with no note yet, so it can be annotated in place.
+ */
+function assembleVersions(overlay: unknown, owner: boolean): Array<VersionEntry> {
+  const version = buildVersion()
+  const seed: Array<VersionEntry> =
+    owner && version ? [{ version, date: buildDate(), notes: [] }] : []
+  return mergeVersionOverlay(seed, overlay)
+}
+
 export const Route = createFileRoute('/api/versions')({
   server: {
     handlers: {
@@ -61,11 +80,13 @@ export const Route = createFileRoute('/api/versions')({
         if (!isAuthenticated(request)) {
           return json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
-        const versions = mergeVersionOverlay(VERSIONS, await readOverlay())
+        const owner = versionsMode() === 'owner'
+        const versions = assembleVersions(await readOverlay(), owner)
         return json({
           ok: true,
           mode: versionsMode(),
-          current: currentVersion(versions),
+          // The running image's own version — not "newest note".
+          current: buildVersion(),
           build: (process.env.HERMES_BUILD_SHA || '').slice(0, 8),
           versions,
         })
@@ -75,8 +96,6 @@ export const Route = createFileRoute('/api/versions')({
           return json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
         if (versionsMode() !== 'owner') {
-          // Read-only on customer images — editing exists only on the
-          // operator's owner-mode build.
           return json({ ok: false, error: 'Read-only' }, { status: 403 })
         }
         const csrfCheck = requireJsonContentType(request)
@@ -107,7 +126,7 @@ export const Route = createFileRoute('/api/versions')({
             : []
           let next: Array<VersionEntry>
           try {
-            next = upsertVersionNote(existing, version, notes, date)
+            next = upsertVersionNote(existing, version, notes, date || buildDate())
           } catch (err) {
             return json(
               { ok: false, error: err instanceof Error ? err.message : String(err) },
@@ -115,8 +134,7 @@ export const Route = createFileRoute('/api/versions')({
             )
           }
           await writeOverlay(next)
-          const versions = mergeVersionOverlay(VERSIONS, next)
-          return json({ ok: true, versions })
+          return json({ ok: true, versions: assembleVersions(next, true) })
         } catch (err) {
           return json(
             { ok: false, error: err instanceof Error ? err.message : String(err) },

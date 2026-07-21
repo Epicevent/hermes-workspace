@@ -114,6 +114,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need main's history to number same-day builds
+
+      # CalVer name for THIS image (OpenClaw model: a version identifies a
+      # build). First build of the day is YYYY.M.D; later ones get -2, -3 …
+      # counted from main commits already landed today, so the name is
+      # deterministic and never repeats across images.
+      - name: Compute build version
+        id: version
+        run: |
+          set -euo pipefail
+          DATE_ISO=$(date -u +%Y-%m-%d)
+          CAL=$(date -u +%Y.%-m.%-d)
+          TODAY_START="${DATE_ISO}T00:00:00Z"
+          # commits on this branch since midnight UTC, excluding the one we build
+          PRIOR=$(git rev-list --count --since="$TODAY_START" HEAD^ 2>/dev/null || echo 0)
+          if [ "$PRIOR" -gt 0 ]; then
+            VERSION="${CAL}-$((PRIOR + 1))"
+          else
+            VERSION="$CAL"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE_ISO" >> "$GITHUB_OUTPUT"
+          echo "build version: $VERSION ($DATE_ISO)"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -159,6 +183,8 @@ jobs:
           tags: hermes-runtime:smoke
           build-args: |
             HERMES_WORKSPACE_GIT_SHA=${{ github.sha }}
+            HERMES_VERSION=${{ steps.version.outputs.version }}
+            HERMES_BUILD_DATE=${{ steps.version.outputs.date }}
           cache-from: type=gha
 
       - name: Smoke test runtime image contract
@@ -186,6 +212,8 @@ jobs:
           labels: ${{ steps.runtime_meta.outputs.labels }}
           build-args: |
             HERMES_WORKSPACE_GIT_SHA=${{ github.sha }}
+            HERMES_VERSION=${{ steps.version.outputs.version }}
+            HERMES_BUILD_DATE=${{ steps.version.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -208,4 +236,6 @@ jobs:
           build-args: |
             HERMES_WORKSPACE_GIT_SHA=${{ github.sha }}
             HERMES_VERSIONS_MODE=owner
+            HERMES_VERSION=${{ steps.version.outputs.version }}
+            HERMES_BUILD_DATE=${{ steps.version.outputs.date }}
           cache-from: type=gha
