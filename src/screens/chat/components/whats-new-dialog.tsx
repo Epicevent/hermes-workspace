@@ -39,6 +39,7 @@ function NoteEditor({
   onSaved: () => void
 }) {
   const [value, setValue] = useState(entry.notes.join('\n'))
+  const [published, setPublished] = useState(entry.customerRelease === true)
   const [error, setError] = useState<string | null>(null)
   const mutation = useMutation({
     mutationFn: async () => {
@@ -48,6 +49,7 @@ function NoteEditor({
         body: JSON.stringify({
           version: entry.version,
           date: entry.date,
+          customerRelease: published,
           notes: value.split('\n'),
         }),
       })
@@ -75,6 +77,16 @@ function NoteEditor({
       />
       <div className="mt-1 flex items-center justify-end gap-2">
         {error ? <span className="text-[11px] text-red-600">{error}</span> : null}
+        {/* Publishing is a separate act from writing (OpenClaw customerRelease):
+            an unchecked build stays owner-only no matter what it says. */}
+        <label className="mr-auto flex items-center gap-1.5 text-[11px] text-primary-600">
+          <input
+            type="checkbox"
+            checked={published}
+            onChange={(event) => setPublished(event.target.checked)}
+          />
+          고객에게 공개
+        </label>
         <Button
           size="sm"
           variant="outline"

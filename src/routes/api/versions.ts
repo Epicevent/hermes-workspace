@@ -16,11 +16,13 @@ import { mergeVersionOverlay, upsertVersionNote } from '@/lib/version-info'
  * actually running".
  *
  * The list is assembled from:
- *   - the operator's notes overlay (<HERMES_HOME>/version-notes.json), which
- *     is also the CURATION: a build reaches customers once he writes a note
- *     for it (OpenClaw does the same with its CUSTOMER_RELEASE flag);
+ *   - the operator's notes overlay (<HERMES_HOME>/version-notes.json);
  *   - plus THIS build, always shown on the owner image so he can write the
  *     note for the build he is looking at.
+ *
+ * Customers see only entries explicitly marked `customerRelease` — the same
+ * curation OpenClaw does with its CUSTOMER_RELEASE flag. Writing a note and
+ * publishing it are separate acts.
  */
 function versionsMode(): 'owner' | 'customer' {
   return process.env.HERMES_VERSIONS_MODE === 'owner' ? 'owner' : 'customer'
@@ -70,7 +72,10 @@ function assembleVersions(overlay: unknown, owner: boolean): Array<VersionEntry>
   const version = buildVersion()
   const seed: Array<VersionEntry> =
     owner && version ? [{ version, date: buildDate(), notes: [] }] : []
-  return mergeVersionOverlay(seed, overlay)
+  const merged = mergeVersionOverlay(seed, overlay)
+  // Owner sees every build (that is how he picks what to publish);
+  // customers see only what he published.
+  return owner ? merged : merged.filter((entry) => entry.customerRelease === true)
 }
 
 export const Route = createFileRoute('/api/versions')({
@@ -111,6 +116,10 @@ export const Route = createFileRoute('/api/versions')({
           const notes = Array.isArray(body.notes)
             ? body.notes.filter((n): n is string => typeof n === 'string')
             : []
+          const customerRelease =
+            typeof body.customerRelease === 'boolean'
+              ? body.customerRelease
+              : undefined
           if (!version) {
             return json({ ok: false, error: 'version required' }, { status: 400 })
           }
@@ -126,7 +135,7 @@ export const Route = createFileRoute('/api/versions')({
             : []
           let next: Array<VersionEntry>
           try {
-            next = upsertVersionNote(existing, version, notes, date || buildDate())
+            next = upsertVersionNote(existing, version, notes, date || buildDate(), customerRelease)
           } catch (err) {
             return json(
               { ok: false, error: err instanceof Error ? err.message : String(err) },
