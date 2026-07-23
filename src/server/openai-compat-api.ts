@@ -130,6 +130,16 @@ export async function buildRequestBody(
 export type StreamChunkType =
   | { type: 'content' | 'reasoning'; text: string }
   | {
+      type: 'provider-receipt'
+      receipt: {
+        provider: string
+        responseId: string
+        modelVersion: string
+        usageMetadata: Record<string, number>
+        finishReason: string
+      }
+    }
+  | {
       type: 'tool'
       name: string
       label: string
@@ -191,6 +201,26 @@ function parseClaudeToolProgressChunk(payload: string): StreamChunkType | null {
   }
 }
 
+function parseProviderReceipt(value: unknown): Extract<StreamChunkType, { type: 'provider-receipt' }> | null {
+  const record = readRecord(value)
+  if (!record) return null
+  const usage = readRecord(record.usageMetadata)
+  if (!usage) return null
+  const usageMetadata = Object.fromEntries(
+    Object.entries(usage).filter(([, item]) => typeof item === 'number' && Number.isInteger(item)),
+  ) as Record<string, number>
+  if (Object.keys(usageMetadata).length === 0) return null
+  const provider = readString(record.provider)
+  const responseId = readString(record.responseId)
+  const modelVersion = readString(record.modelVersion)
+  const finishReason = readString(record.finishReason)
+  if (!provider || !responseId || !modelVersion || !finishReason) return null
+  return {
+    type: 'provider-receipt',
+    receipt: { provider, responseId, modelVersion, usageMetadata, finishReason },
+  }
+}
+
 export async function* parseOpenAIStream(
   response: Response,
 ): AsyncGenerator<StreamChunkType, void, void> {
@@ -248,7 +278,10 @@ export async function* parseOpenAIStream(
                 reasoning_content?: string | null
               }
             }>
+            usage?: { provider_receipt?: unknown }
           }
+          const providerReceipt = parseProviderReceipt(parsed.usage?.provider_receipt)
+          if (providerReceipt) yield providerReceipt
           const d = parsed.choices?.[0]?.delta
           const content = d?.content || ''
           const reasoning = d?.reasoning || d?.reasoning_content || ''

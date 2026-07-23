@@ -94,6 +94,29 @@ describe('parseOpenAIStream', () => {
     ])
   })
 
+  it('preserves a complete provider receipt from the terminal usage chunk', async () => {
+    const response = createStreamResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"provider_receipt":{"provider":"gemini","responseId":"resp-1","modelVersion":"gemini-3.6-flash","usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1,"totalTokenCount":3},"finishReason":"STOP"}}}\n\n',
+      'data: [DONE]\n\n',
+    ])
+
+    const chunks = []
+    for await (const chunk of parseOpenAIStream(response)) chunks.push(chunk)
+
+    expect(chunks).toEqual([
+      {
+        type: 'provider-receipt',
+        receipt: {
+          provider: 'gemini',
+          responseId: 'resp-1',
+          modelVersion: 'gemini-3.6-flash',
+          usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 1, totalTokenCount: 3 },
+          finishReason: 'STOP',
+        },
+      },
+    ])
+  })
+
   it('emits synthetic tool events for Hermes tool progress frames', async () => {
     const response = createStreamResponse([
       'event: claude.tool.progress\n',

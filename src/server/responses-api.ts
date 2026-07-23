@@ -43,7 +43,16 @@ export type ResponsesStreamEvent =
       // render this as the tool result body.
       output: string
     }
-  | { kind: 'completed' }
+  | {
+      kind: 'completed'
+      providerReceipt?: {
+        provider: string
+        responseId: string
+        modelVersion: string
+        usageMetadata: Record<string, number>
+        finishReason: string
+      }
+    }
   | { kind: 'failed'; error: string }
 
 export type ResponsesChatRequest = {
@@ -232,7 +241,40 @@ export async function* streamResponses(
         }
 
         if (eventType === 'response.completed') {
-          yield { kind: 'completed' }
+          const response = parsed.response && typeof parsed.response === 'object'
+            ? (parsed.response as Record<string, unknown>)
+            : null
+          const usage = response?.usage && typeof response.usage === 'object'
+            ? (response.usage as Record<string, unknown>)
+            : null
+          const receiptValue = usage?.provider_receipt
+          const receipt = receiptValue && typeof receiptValue === 'object'
+            ? (receiptValue as Record<string, unknown>)
+            : null
+          const rawUsage = receipt?.usageMetadata && typeof receipt.usageMetadata === 'object'
+            ? (receipt.usageMetadata as Record<string, unknown>)
+            : null
+          const usageMetadata = Object.fromEntries(
+            Object.entries(rawUsage || {}).filter(([, item]) => typeof item === 'number' && Number.isInteger(item)),
+          ) as Record<string, number>
+          const complete = receipt
+            && receipt.provider === 'gemini'
+            && typeof receipt.responseId === 'string' && receipt.responseId
+            && typeof receipt.modelVersion === 'string' && receipt.modelVersion
+            && typeof receipt.finishReason === 'string' && receipt.finishReason
+            && Object.keys(usageMetadata).length > 0
+          yield complete
+            ? {
+                kind: 'completed',
+                providerReceipt: {
+                  provider: 'gemini',
+                  responseId: receipt.responseId,
+                  modelVersion: receipt.modelVersion,
+                  usageMetadata,
+                  finishReason: receipt.finishReason,
+                },
+              }
+            : { kind: 'completed' }
           continue
         }
         if (eventType === 'response.failed') {

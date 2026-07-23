@@ -534,6 +534,13 @@ export const Route = createFileRoute('/api/send-stream')({
                   rawSessionKey ||
                   portableSessionKey
                 let accumulated = ''
+                let providerReceipt: {
+                  provider: string
+                  responseId: string
+                  modelVersion: string
+                  usageMetadata: Record<string, number>
+                  finishReason: string
+                } | null = null
 
                 activeRunId = runId
                 registerActiveSendRun(runId)
@@ -712,6 +719,7 @@ export const Route = createFileRoute('/api/send-stream')({
                           continue
                         }
                         if (ev.kind === 'completed') {
+                          providerReceipt = ev.providerReceipt ?? null
                           // Final terminal event — fall through to the
                           // shared 'done' emit below.
                           break
@@ -734,6 +742,7 @@ export const Route = createFileRoute('/api/send-stream')({
                         state: 'complete',
                         sessionKey: portableSessionKey,
                         runId,
+                        providerReceipt,
                         message: {
                           role: 'assistant',
                           content: [
@@ -772,7 +781,9 @@ export const Route = createFileRoute('/api/send-stream')({
                   let thinking = ''
                   let toolEventCount = 0
                   for await (const chunk of stream) {
-                    if (chunk.type === 'reasoning') {
+                    if (chunk.type === 'provider-receipt') {
+                      providerReceipt = chunk.receipt
+                    } else if (chunk.type === 'reasoning') {
                       thinking += chunk.text
                       persistActiveRun((runSessionKey, activeId) =>
                         setRunThinking(runSessionKey, activeId, thinking),
@@ -849,6 +860,7 @@ export const Route = createFileRoute('/api/send-stream')({
                     state: 'complete',
                     sessionKey: portableSessionKey,
                     runId,
+                    providerReceipt,
                     message: {
                       role: 'assistant',
                       content: [
