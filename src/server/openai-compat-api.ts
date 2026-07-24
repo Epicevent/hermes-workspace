@@ -133,10 +133,18 @@ export type StreamChunkType =
       type: 'provider-receipt'
       receipt: {
         provider: 'gemini'
+        configuredModel?: string
         responseId: string
         modelVersion: string
+        evidenceSource?: 'gemini_response.modelVersion'
         usageMetadata: Record<string, number>
         finishReason: string
+      }
+      providerModelEvidence?: {
+        configuredModel: string
+        actualModel: string
+        evidenceSource: 'gemini_response.modelVersion'
+        responseId: string
       }
     }
   | {
@@ -225,9 +233,36 @@ function parseProviderReceipt(value: unknown): Extract<StreamChunkType, { type: 
   const modelVersion = readString(record.modelVersion)
   const finishReason = readString(record.finishReason)
   if (provider !== 'gemini' || !responseId || !modelVersion || !finishReason) return null
+  const configuredModel = readString(record.configuredModel)
+  const evidenceSource = readString(record.evidenceSource)
+  const hasStableModelEvidence =
+    Boolean(configuredModel) &&
+    evidenceSource === 'gemini_response.modelVersion'
   return {
     type: 'provider-receipt',
-    receipt: { provider: 'gemini', responseId, modelVersion, usageMetadata, finishReason },
+    receipt: {
+      provider: 'gemini',
+      ...(hasStableModelEvidence
+        ? {
+            configuredModel,
+            evidenceSource: 'gemini_response.modelVersion' as const,
+          }
+        : {}),
+      responseId,
+      modelVersion,
+      usageMetadata,
+      finishReason,
+    },
+    ...(hasStableModelEvidence
+      ? {
+          providerModelEvidence: {
+            configuredModel,
+            actualModel: modelVersion,
+            evidenceSource: 'gemini_response.modelVersion' as const,
+            responseId,
+          },
+        }
+      : {}),
   }
 }
 

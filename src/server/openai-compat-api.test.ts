@@ -96,7 +96,7 @@ describe('parseOpenAIStream', () => {
 
   it('preserves a complete provider receipt from the terminal usage chunk', async () => {
     const response = createStreamResponse([
-      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"provider_receipt":{"provider":"gemini","responseId":"resp-1","modelVersion":"gemini-3.6-flash","usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1,"totalTokenCount":3},"finishReason":"STOP"}}}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"provider_receipt":{"provider":"gemini","configuredModel":"gemini-3.6-flash","responseId":"resp-1","modelVersion":"gemini-3.6-flash-001","evidenceSource":"gemini_response.modelVersion","usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1,"totalTokenCount":3},"finishReason":"STOP"}}}\n\n',
       'data: [DONE]\n\n',
     ])
 
@@ -108,10 +108,18 @@ describe('parseOpenAIStream', () => {
         type: 'provider-receipt',
         receipt: {
           provider: 'gemini',
+          configuredModel: 'gemini-3.6-flash',
           responseId: 'resp-1',
-          modelVersion: 'gemini-3.6-flash',
+          modelVersion: 'gemini-3.6-flash-001',
+          evidenceSource: 'gemini_response.modelVersion',
           usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 1, totalTokenCount: 3 },
           finishReason: 'STOP',
+        },
+        providerModelEvidence: {
+          configuredModel: 'gemini-3.6-flash',
+          actualModel: 'gemini-3.6-flash-001',
+          evidenceSource: 'gemini_response.modelVersion',
+          responseId: 'resp-1',
         },
       },
     ])
@@ -119,7 +127,7 @@ describe('parseOpenAIStream', () => {
 
   it('does not reuse a provider receipt across sequential streams', async () => {
     const first = createStreamResponse([
-      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"provider_receipt":{"provider":"gemini","responseId":"resp-1","modelVersion":"gemini-3.6-flash","usageMetadata":{"totalTokenCount":3},"finishReason":"STOP"}}}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"provider_receipt":{"provider":"gemini","configuredModel":"gemini-3.6-flash","responseId":"resp-1","modelVersion":"gemini-3.6-flash-001","evidenceSource":"gemini_response.modelVersion","usageMetadata":{"totalTokenCount":3},"finishReason":"STOP"}}}\n\n',
       'data: [DONE]\n\n',
     ])
     const second = createStreamResponse([
@@ -136,6 +144,10 @@ describe('parseOpenAIStream', () => {
     expect(firstChunks.some((chunk) => chunk.type === 'provider-receipt')).toBe(
       true,
     )
+    expect(firstChunks[0]).toHaveProperty(
+      'providerModelEvidence.actualModel',
+      'gemini-3.6-flash-001',
+    )
     expect(secondChunks).toEqual([{ type: 'content', text: 'second' }])
   })
 
@@ -149,6 +161,20 @@ describe('parseOpenAIStream', () => {
     for await (const chunk of parseOpenAIStream(response)) chunks.push(chunk)
 
     expect(chunks).toEqual([])
+  })
+
+  it('does not elevate an untrusted model evidence source', async () => {
+    const response = createStreamResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"provider_receipt":{"provider":"gemini","configuredModel":"gemini-3.6-flash","responseId":"resp-1","modelVersion":"gemini-3.6-flash","evidenceSource":"environment","usageMetadata":{"totalTokenCount":3},"finishReason":"STOP"}}}\n\n',
+      'data: [DONE]\n\n',
+    ])
+
+    const chunks = []
+    for await (const chunk of parseOpenAIStream(response)) chunks.push(chunk)
+
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).not.toHaveProperty('providerModelEvidence')
+    expect(chunks[0]).not.toHaveProperty('receipt.configuredModel')
   })
 
   it('emits synthetic tool events for Hermes tool progress frames', async () => {

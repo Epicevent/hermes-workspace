@@ -536,10 +536,18 @@ export const Route = createFileRoute('/api/send-stream')({
                 let accumulated = ''
                 let providerReceipt: {
                   provider: 'gemini'
+                  configuredModel?: string
                   responseId: string
                   modelVersion: string
+                  evidenceSource?: 'gemini_response.modelVersion'
                   usageMetadata: Record<string, number>
                   finishReason: string
+                } | null = null
+                let providerModelEvidence: {
+                  configuredModel: string
+                  actualModel: string
+                  evidenceSource: 'gemini_response.modelVersion'
+                  responseId: string
                 } | null = null
 
                 activeRunId = runId
@@ -720,6 +728,8 @@ export const Route = createFileRoute('/api/send-stream')({
                         }
                         if (ev.kind === 'completed') {
                           providerReceipt = ev.providerReceipt ?? null
+                          providerModelEvidence =
+                            ev.providerModelEvidence ?? null
                           // Final terminal event — fall through to the
                           // shared 'done' emit below.
                           break
@@ -743,6 +753,7 @@ export const Route = createFileRoute('/api/send-stream')({
                         sessionKey: portableSessionKey,
                         runId,
                         providerReceipt,
+                        providerModelEvidence,
                         message: {
                           role: 'assistant',
                           content: [
@@ -783,6 +794,8 @@ export const Route = createFileRoute('/api/send-stream')({
                   for await (const chunk of stream) {
                     if (chunk.type === 'provider-receipt') {
                       providerReceipt = chunk.receipt
+                      providerModelEvidence =
+                        chunk.providerModelEvidence ?? null
                     } else if (chunk.type === 'reasoning') {
                       thinking += chunk.text
                       persistActiveRun((runSessionKey, activeId) =>
@@ -861,6 +874,7 @@ export const Route = createFileRoute('/api/send-stream')({
                     sessionKey: portableSessionKey,
                     runId,
                     providerReceipt,
+                    providerModelEvidence,
                     message: {
                       role: 'assistant',
                       content: [
