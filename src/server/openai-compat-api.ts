@@ -132,7 +132,7 @@ export type StreamChunkType =
   | {
       type: 'provider-receipt'
       receipt: {
-        provider: string
+        provider: 'gemini'
         responseId: string
         modelVersion: string
         usageMetadata: Record<string, number>
@@ -207,17 +207,27 @@ function parseProviderReceipt(value: unknown): Extract<StreamChunkType, { type: 
   const usage = readRecord(record.usageMetadata)
   if (!usage) return null
   const usageMetadata = Object.fromEntries(
-    Object.entries(usage).filter(([, item]) => typeof item === 'number' && Number.isInteger(item)),
+    Object.entries(usage).filter(
+      ([key, item]) =>
+        [
+          'promptTokenCount',
+          'candidatesTokenCount',
+          'totalTokenCount',
+          'cachedContentTokenCount',
+        ].includes(key) &&
+        typeof item === 'number' &&
+        Number.isInteger(item),
+    ),
   ) as Record<string, number>
   if (Object.keys(usageMetadata).length === 0) return null
   const provider = readString(record.provider)
   const responseId = readString(record.responseId)
   const modelVersion = readString(record.modelVersion)
   const finishReason = readString(record.finishReason)
-  if (!provider || !responseId || !modelVersion || !finishReason) return null
+  if (provider !== 'gemini' || !responseId || !modelVersion || !finishReason) return null
   return {
     type: 'provider-receipt',
-    receipt: { provider, responseId, modelVersion, usageMetadata, finishReason },
+    receipt: { provider: 'gemini', responseId, modelVersion, usageMetadata, finishReason },
   }
 }
 

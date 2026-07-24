@@ -46,7 +46,7 @@ export type ResponsesStreamEvent =
   | {
       kind: 'completed'
       providerReceipt?: {
-        provider: string
+        provider: 'gemini'
         responseId: string
         modelVersion: string
         usageMetadata: Record<string, number>
@@ -255,7 +255,17 @@ export async function* streamResponses(
             ? (receipt.usageMetadata as Record<string, unknown>)
             : null
           const usageMetadata = Object.fromEntries(
-            Object.entries(rawUsage || {}).filter(([, item]) => typeof item === 'number' && Number.isInteger(item)),
+            Object.entries(rawUsage || {}).filter(
+              ([key, item]) =>
+                [
+                  'promptTokenCount',
+                  'candidatesTokenCount',
+                  'totalTokenCount',
+                  'cachedContentTokenCount',
+                ].includes(key) &&
+                typeof item === 'number' &&
+                Number.isInteger(item),
+            ),
           ) as Record<string, number>
           const complete = receipt
             && receipt.provider === 'gemini'

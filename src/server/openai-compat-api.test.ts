@@ -117,6 +117,40 @@ describe('parseOpenAIStream', () => {
     ])
   })
 
+  it('does not reuse a provider receipt across sequential streams', async () => {
+    const first = createStreamResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"provider_receipt":{"provider":"gemini","responseId":"resp-1","modelVersion":"gemini-3.6-flash","usageMetadata":{"totalTokenCount":3},"finishReason":"STOP"}}}\n\n',
+      'data: [DONE]\n\n',
+    ])
+    const second = createStreamResponse([
+      'data: {"choices":[{"delta":{"content":"second"},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ])
+
+    const firstChunks = []
+    for await (const chunk of parseOpenAIStream(first)) firstChunks.push(chunk)
+    const secondChunks = []
+    for await (const chunk of parseOpenAIStream(second))
+      secondChunks.push(chunk)
+
+    expect(firstChunks.some((chunk) => chunk.type === 'provider-receipt')).toBe(
+      true,
+    )
+    expect(secondChunks).toEqual([{ type: 'content', text: 'second' }])
+  })
+
+  it('rejects non-Gemini and unknown-only receipt metadata', async () => {
+    const response = createStreamResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"provider_receipt":{"provider":"environment","responseId":"env-1","modelVersion":"gemini-3.6-flash","usageMetadata":{"inventedCount":3},"finishReason":"STOP"}}}\n\n',
+      'data: [DONE]\n\n',
+    ])
+
+    const chunks = []
+    for await (const chunk of parseOpenAIStream(response)) chunks.push(chunk)
+
+    expect(chunks).toEqual([])
+  })
+
   it('emits synthetic tool events for Hermes tool progress frames', async () => {
     const response = createStreamResponse([
       'event: claude.tool.progress\n',

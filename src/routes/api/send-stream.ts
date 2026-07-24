@@ -535,7 +535,7 @@ export const Route = createFileRoute('/api/send-stream')({
                   portableSessionKey
                 let accumulated = ''
                 let providerReceipt: {
-                  provider: string
+                  provider: 'gemini'
                   responseId: string
                   modelVersion: string
                   usageMetadata: Record<string, number>
