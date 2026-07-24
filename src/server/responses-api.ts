@@ -46,11 +46,19 @@ export type ResponsesStreamEvent =
   | {
       kind: 'completed'
       providerReceipt?: {
-        provider: string
+        provider: 'gemini'
+        configuredModel?: string
         responseId: string
         modelVersion: string
+        evidenceSource?: 'gemini_response.modelVersion'
         usageMetadata: Record<string, number>
         finishReason: string
+      }
+      providerModelEvidence?: {
+        configuredModel: string
+        actualModel: string
+        evidenceSource: 'gemini_response.modelVersion'
+        responseId: string
       }
     }
   | { kind: 'failed'; error: string }
@@ -255,7 +263,17 @@ export async function* streamResponses(
             ? (receipt.usageMetadata as Record<string, unknown>)
             : null
           const usageMetadata = Object.fromEntries(
-            Object.entries(rawUsage || {}).filter(([, item]) => typeof item === 'number' && Number.isInteger(item)),
+            Object.entries(rawUsage || {}).filter(
+              ([key, item]) =>
+                [
+                  'promptTokenCount',
+                  'candidatesTokenCount',
+                  'totalTokenCount',
+                  'cachedContentTokenCount',
+                ].includes(key) &&
+                typeof item === 'number' &&
+                Number.isInteger(item),
+            ),
           ) as Record<string, number>
           const complete = receipt
             && receipt.provider === 'gemini'
@@ -263,16 +281,38 @@ export async function* streamResponses(
             && typeof receipt.modelVersion === 'string' && receipt.modelVersion
             && typeof receipt.finishReason === 'string' && receipt.finishReason
             && Object.keys(usageMetadata).length > 0
+          const configuredModel = receipt && typeof receipt.configuredModel === 'string'
+            ? receipt.configuredModel.trim()
+            : ''
+          const hasStableModelEvidence = complete
+            && configuredModel
+            && receipt.evidenceSource === 'gemini_response.modelVersion'
           yield complete
             ? {
                 kind: 'completed',
                 providerReceipt: {
                   provider: 'gemini',
+                  ...(hasStableModelEvidence
+                    ? {
+                        configuredModel,
+                        evidenceSource: 'gemini_response.modelVersion' as const,
+                      }
+                    : {}),
                   responseId: receipt.responseId,
                   modelVersion: receipt.modelVersion,
                   usageMetadata,
                   finishReason: receipt.finishReason,
                 },
+                ...(hasStableModelEvidence
+                  ? {
+                      providerModelEvidence: {
+                        configuredModel,
+                        actualModel: receipt.modelVersion,
+                        evidenceSource: 'gemini_response.modelVersion' as const,
+                        responseId: receipt.responseId,
+                      },
+                    }
+                  : {}),
               }
             : { kind: 'completed' }
           continue
