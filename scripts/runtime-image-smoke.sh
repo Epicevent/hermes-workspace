@@ -108,6 +108,51 @@ function assert(condition, message) {
   process.exit(1);
 });
 NODE
+    # The workspace layer must retain the pinned Hermes base image's
+    # content-free usage ledger collector seam. Exercise both the static
+    # coverage contract and the read-only export against the live runtime
+    # database so a UI-only healthy image cannot hide a missing producer CLI.
+    usage_coverage="$(docker exec "$cid" hermes usage-receipts coverage --json)"
+    printf '%s' "$usage_coverage" | docker exec -i "$cid" node -e '
+      let raw = "";
+      process.stdin.on("data", (d) => { raw += d; });
+      process.stdin.on("end", () => {
+        const result = JSON.parse(raw);
+        const expected = ["schema", "productFamily", "manifestDigest", "coverageStatus", "surfaces"].sort();
+        if (JSON.stringify(Object.keys(result).sort()) !== JSON.stringify(expected)) {
+          console.error(`usage coverage fields mismatch: ${Object.keys(result)}`); process.exit(1);
+        }
+        if (result.schema !== "jitech-provider-usage-coverage/v1") {
+          console.error(`usage coverage schema=${result.schema}`); process.exit(1);
+        }
+        if (result.productFamily !== "hermes" || !Array.isArray(result.surfaces) || result.surfaces.length === 0) {
+          console.error("usage coverage must identify Hermes and enumerate surfaces"); process.exit(1);
+        }
+      });
+    '
+
+    usage_export="$(docker exec "$cid" hermes usage-receipts export --after 0 --limit 1)"
+    printf '%s' "$usage_export" | docker exec -i "$cid" node -e '
+      let raw = "";
+      process.stdin.on("data", (d) => { raw += d; });
+      process.stdin.on("end", () => {
+        const result = JSON.parse(raw);
+        const expected = ["schema", "after", "nextCursor", "highWatermark", "count", "hasMore", "receipts", "coverageManifests"].sort();
+        if (JSON.stringify(Object.keys(result).sort()) !== JSON.stringify(expected)) {
+          console.error(`usage export fields mismatch: ${Object.keys(result)}`); process.exit(1);
+        }
+        if (result.schema !== "jitech-provider-usage-export/v1" || result.after !== 0) {
+          console.error(`usage export identity mismatch: schema=${result.schema} after=${result.after}`); process.exit(1);
+        }
+        if (!Array.isArray(result.receipts) || !Array.isArray(result.coverageManifests) || result.count !== result.receipts.length) {
+          console.error("usage export arrays/count mismatch"); process.exit(1);
+        }
+        if (!Number.isInteger(result.nextCursor) || !Number.isInteger(result.highWatermark) || typeof result.hasMore !== "boolean") {
+          console.error("usage export cursor shape mismatch"); process.exit(1);
+        }
+      });
+    ' || { echo "provider usage export contract missing from runtime image"; exit 1; }
+
     # Selftest contract wiring (hermes-jitech#9): the label must name a command
     # that actually runs in the image and prints the contract JSON. The smoke
     # env has no model/config, so we assert wiring + shape + the checks the
@@ -147,7 +192,7 @@ NODE
       });
     ' || { echo "selftest contract wiring failed"; exit 1; }
 
-    echo "Runtime image served workspace, gateway, dashboard, workspace APIs, files APIs, and selftest contract successfully"
+    echo "Runtime image served workspace, gateway, dashboard, workspace APIs, files APIs, provider usage export, and selftest contract successfully"
     exit 0
   fi
 
