@@ -11,10 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { HugeiconsIcon } from '@hugeicons/react'
-import {
-  ChartLineData01Icon,
-  CancelIcon,
-} from '@hugeicons/core-free-icons'
+import { ChartLineData01Icon, CancelIcon } from '@hugeicons/core-free-icons'
 import type { DashboardOverview } from '@/server/dashboard-aggregator'
 import { formatModelName } from '@/screens/dashboard/lib/formatters'
 
@@ -30,12 +27,17 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
-function formatCost(usd: number): string {
-  if (!usd || usd <= 0) return '$0'
-  if (usd < 0.01) return '<$0.01'
-  if (usd < 1) return `$${usd.toFixed(3)}`
-  if (usd < 100) return `$${usd.toFixed(2)}`
-  return `$${Math.round(usd).toLocaleString()}`
+export function formatCost(
+  usd: number | null,
+  completeness: 'complete' | 'partial' | 'unavailable',
+): string {
+  if (usd === null || completeness === 'unavailable') return 'Cost unavailable'
+  const suffix = completeness === 'partial' ? ' partial' : ''
+  if (usd <= 0) return `$0${suffix}`
+  if (usd < 0.01) return `<$0.01${suffix}`
+  if (usd < 1) return `$${usd.toFixed(3)}${suffix}`
+  if (usd < 100) return `$${usd.toFixed(2)}${suffix}`
+  return `$${Math.round(usd).toLocaleString()}${suffix}`
 }
 
 function shortDay(day: string): string {
@@ -56,7 +58,7 @@ type ChartDatum = {
   cache: number
   reasoning: number
   sessions: number
-  cost: number
+  cost: number | null
 }
 
 /**
@@ -136,16 +138,13 @@ export function AnalyticsChartCard({
               >
                 {formatTokens(analytics.totalTokens)} tokens ·{' '}
                 {analytics.totalApiCalls.toLocaleString()} calls ·{' '}
-                {formatCost(analytics.estimatedCostUsd ?? 0)}
+                {formatCost(analytics.estimatedCostUsd, analytics.costLabel)}
                 {loading ? ' · refreshing…' : ''}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <PeriodSwitch
-              value={period}
-              onChange={onPeriodChange}
-            />
+            <PeriodSwitch value={period} onChange={onPeriodChange} />
             {hasData ? (
               <button
                 type="button"
@@ -163,7 +162,8 @@ export function AnalyticsChartCard({
         </div>
 
         {insights.length > 0 ? (
-          <ul className="flex flex-col gap-1 rounded-md border p-2 text-[11px]"
+          <ul
+            className="flex flex-col gap-1 rounded-md border p-2 text-[11px]"
             style={{
               borderColor: 'var(--theme-border)',
               background:
@@ -300,10 +300,7 @@ export function AnalyticsChartCard({
         {hasData ? (
           <div className="flex items-center gap-4 text-[10px]">
             <Legend tone="var(--theme-accent)" label="tokens (in+out)" />
-            <Legend
-              tone="var(--theme-accent-secondary)"
-              label="cache reads"
-            />
+            <Legend tone="var(--theme-accent-secondary)" label="cache reads" />
           </div>
         ) : null}
       </div>
@@ -420,7 +417,7 @@ function AnalyticsModal({
               {formatTokens(analytics.totalTokens)} tokens ·{' '}
               {analytics.totalSessions.toLocaleString()} sessions ·{' '}
               {analytics.totalApiCalls.toLocaleString()} calls ·{' '}
-              {formatCost(analytics.estimatedCostUsd ?? 0)}
+              {formatCost(analytics.estimatedCostUsd, analytics.costLabel)}
             </p>
           </div>
           <button
@@ -571,7 +568,7 @@ function AnalyticsModal({
                     <span style={{ color: 'var(--theme-muted)' }}>
                       cost{' '}
                       <span style={{ color: 'var(--theme-text)' }}>
-                        {formatCost(m.cost)}
+                        {formatCost(m.cost, analytics.costLabel)}
                       </span>
                     </span>
                   </div>

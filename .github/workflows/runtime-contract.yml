@@ -3,17 +3,6 @@ name: Runtime Contract
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'Dockerfile.runtime'
-      - 'docker/runtime-workspace-run'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'scripts/runtime-image-smoke.sh'
-      - 'selftest.mjs'
-      - 'server-entry.js'
-      - 'skills/**'
-      - 'src/**'
 
 permissions:
   contents: read

@@ -22,6 +22,7 @@ function createStreamResponse(chunks: string[]): Response {
 }
 
 const ORIGINAL_HOME = process.env.HOME
+const ORIGINAL_CODEX_HOME = process.env.CODEX_HOME
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -29,17 +30,21 @@ afterEach(() => {
   delete process.env.CLAUDE_API_TOKEN
   if (ORIGINAL_HOME === undefined) delete process.env.HOME
   else process.env.HOME = ORIGINAL_HOME
+  if (ORIGINAL_CODEX_HOME === undefined) delete process.env.CODEX_HOME
+  else process.env.CODEX_HOME = ORIGINAL_CODEX_HOME
 })
 
 describe('openaiChat', () => {
   it('sends Hermes session continuity headers with authentication when available', async () => {
     process.env.HERMES_API_TOKEN = 'test-token'
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ choices: [{ message: { content: 'ok' } }] }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    )
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: 'ok' } }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
     vi.stubGlobal('fetch', fetchMock)
 
     await openaiChat([{ role: 'user', content: 'hello' }], {
@@ -47,20 +52,25 @@ describe('openaiChat', () => {
       sessionId: 'workspace-session-1',
     })
 
-    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
+      string,
+      string
+    >
     expect(headers.Authorization).toBe('Bearer test-token')
     expect(headers['X-Hermes-Session-Id']).toBe('workspace-session-1')
     expect(headers['X-Claude-Session-Id']).toBe('workspace-session-1')
   })
 
   it('sends Hermes session continuity headers even without a bearer token', async () => {
-    process.env.HOME = '/tmp/hermes-workspace-test-no-codex-auth'
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ choices: [{ message: { content: 'ok' } }] }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    )
+    process.env.CODEX_HOME = '/tmp/hermes-workspace-test-no-codex-auth'
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: 'ok' } }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
     vi.stubGlobal('fetch', fetchMock)
 
     await openaiChat([{ role: 'user', content: 'hello' }], {
@@ -68,7 +78,10 @@ describe('openaiChat', () => {
       sessionId: 'workspace-session-2',
     })
 
-    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
+      string,
+      string
+    >
     expect(headers.Authorization).toBeUndefined()
     expect(headers['X-Hermes-Session-Id']).toBe('workspace-session-2')
     expect(headers['X-Claude-Session-Id']).toBe('workspace-session-2')
@@ -112,7 +125,11 @@ describe('parseOpenAIStream', () => {
           responseId: 'resp-1',
           modelVersion: 'gemini-3.6-flash-001',
           evidenceSource: 'gemini_response.modelVersion',
-          usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 1, totalTokenCount: 3 },
+          usageMetadata: {
+            promptTokenCount: 2,
+            candidatesTokenCount: 1,
+            totalTokenCount: 3,
+          },
           finishReason: 'STOP',
         },
         providerModelEvidence: {

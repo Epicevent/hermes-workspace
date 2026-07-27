@@ -174,7 +174,13 @@ export type DashboardAnalyticsSection = {
   totalSessions: number
   /** API call count over the window. */
   totalApiCalls: number
-  topModels: Array<{ id: string; tokens: number; calls: number; cost: number; sessions: number }>
+  topModels: Array<{
+    id: string
+    tokens: number
+    calls: number
+    cost: number | null
+    sessions: number
+  }>
   /**
    * Per-day rollup for sparklines. ISO date string + tokens + sessions
    * + cost per day. Always returned, even when empty.
@@ -187,27 +193,27 @@ export type DashboardAnalyticsSection = {
     reasoningTokens: number
     sessions: number
     apiCalls: number
-    estimatedCost: number
+    estimatedCost: number | null
   }>
   estimatedCostUsd: number | null
   /**
    * Cost-coverage trust label.
    *
-   *  - `precise`        — every session in the window has a known
-   *                       priced model.
-   *  - `partial`        — some sessions priced, some included or
-   *                       unknown.
-   *  - `included`       — every session is on a subscription/included
-   *                       provider so the dollar number is
-   *                       structurally zero.
-   *  - `unknown`        — we have no signal at all.
+   *  - `complete` — every call in the window has complete cost evidence.
+   *  - `partial` — at least one call is priced but coverage is incomplete.
+   *  - `unavailable` — no call has usable cost evidence.
    *
-   * Computed in the aggregator from `by_model` cost per provider:
-   * codex / anthropic-oauth / minimax (subscription) vs explicit
-   * priced models. Workspace UIs should use `costLabel` instead of
-   * showing `estimatedCostUsd` as a precise dollar figure.
+   * Read from producer evidence, never inferred from a model-name regex.
+   * Workspace UIs must render `estimatedCostUsd` together with this state.
    */
-  costLabel: 'precise' | 'partial' | 'included' | 'unknown'
+  costLabel: 'complete' | 'partial' | 'unavailable'
+  costCoverage: {
+    totalCalls: number
+    completeCalls: number
+    partialCalls: number
+    unavailableCalls: number
+    scope: 'provider_generation_estimate'
+  }
   /** Source the totals came from. */
   source: 'analytics' | 'fallback' | 'unavailable'
 }
@@ -366,7 +372,7 @@ function normalizeCron(raw: unknown): DashboardCronSection | null {
       typeof j.last_error === 'string'
         ? j.last_error
         : typeof j.last_delivery_error === 'string'
-          ? (j.last_delivery_error)
+          ? j.last_delivery_error
           : null
     const isFailure =
       lastStatus === 'failed' ||
@@ -376,16 +382,13 @@ function normalizeCron(raw: unknown): DashboardCronSection | null {
       failed += 1
       const id = readString(j.id) || readString(j.name) || 'unknown'
       const name = readString(j.name) || id
-      const lastRunAt =
-        typeof j.last_run_at === 'string' ? j.last_run_at : null
+      const lastRunAt = typeof j.last_run_at === 'string' ? j.last_run_at : null
       recentFailures.push({ id, name, lastError, lastRunAt })
     }
     const candidates = [
       typeof j.next_run_at === 'string' ? Date.parse(j.next_run_at) : NaN,
       typeof j.next_run === 'string' ? Date.parse(j.next_run) : NaN,
-      typeof j.next_run_at === 'number'
-        ? (j.next_run_at) * 1000
-        : NaN,
+      typeof j.next_run_at === 'number' ? j.next_run_at * 1000 : NaN,
     ].filter((v) => Number.isFinite(v))
     for (const ts of candidates) {
       if (nextRunMs === null || ts < nextRunMs) nextRunMs = ts
@@ -419,7 +422,9 @@ function normalizeKanban(raw: unknown): DashboardKanbanSection | null {
     topBlocked: [],
   }
 
-  const bucketFor = (status: string): keyof Pick<
+  const bucketFor = (
+    status: string,
+  ): keyof Pick<
     DashboardKanbanSection,
     'triage' | 'todo' | 'ready' | 'running' | 'blocked' | 'done' | 'other'
   > => {
@@ -427,7 +432,8 @@ function normalizeKanban(raw: unknown): DashboardKanbanSection | null {
     if (s === 'triage') return 'triage'
     if (s === 'todo' || s === 'queued') return 'todo'
     if (s === 'ready') return 'ready'
-    if (s === 'running' || s === 'claimed' || s === 'in_progress') return 'running'
+    if (s === 'running' || s === 'claimed' || s === 'in_progress')
+      return 'running'
     if (s === 'blocked') return 'blocked'
     if (s === 'done' || s === 'completed' || s === 'complete') return 'done'
     return 'other'
@@ -472,8 +478,7 @@ function normalizeAchievementUnlock(
     category: readString(r.category) || 'General',
     icon: readString(r.icon) || 'Star',
     tier: typeof r.tier === 'string' ? r.tier : null,
-    unlockedAt:
-      typeof r.unlocked_at === 'number' ? (r.unlocked_at) : null,
+    unlockedAt: typeof r.unlocked_at === 'number' ? r.unlocked_at : null,
   }
 }
 
@@ -486,9 +491,7 @@ function normalizeAchievements(
   if (recentArr.length === 0 && (!all || typeof all !== 'object')) return null
   const recentUnlocks = recentArr
     .map(normalizeAchievementUnlock)
-    .filter(
-      (entry): entry is DashboardAchievementUnlock => entry !== null,
-    )
+    .filter((entry): entry is DashboardAchievementUnlock => entry !== null)
     .slice(0, limit)
 
   let totalUnlocked = 0
@@ -546,14 +549,13 @@ function normalizeSkillsUsage(
         skill,
         totalCount: readNumber(e.total_count),
         percentage: readNumber(e.percentage),
-        lastUsedAt:
-          typeof e.last_used_at === 'number'
-            ? (e.last_used_at)
-            : null,
+        lastUsedAt: typeof e.last_used_at === 'number' ? e.last_used_at : null,
       }
     })
     .filter(
-      (e): e is {
+      (
+        e,
+      ): e is {
         skill: string
         totalCount: number
         percentage: number
@@ -562,10 +564,7 @@ function normalizeSkillsUsage(
     )
     .sort((a, b) => b.totalCount - a.totalCount)
     .slice(0, 5)
-  if (
-    !summary &&
-    topSkills.length === 0
-  ) {
+  if (!summary && topSkills.length === 0) {
     return null
   }
   return {
@@ -598,9 +597,7 @@ function normalizeAnalytics(
     totalsRaw?.total_output ?? r.total_output ?? r.output_tokens,
   )
   const cacheReadTokens = readNumber(
-    totalsRaw?.total_cache_read ??
-      r.total_cache_read ??
-      r.cache_read_tokens,
+    totalsRaw?.total_cache_read ?? r.total_cache_read ?? r.cache_read_tokens,
   )
   const reasoningTokens = readNumber(
     totalsRaw?.total_reasoning ?? r.total_reasoning ?? r.reasoning_tokens,
@@ -611,8 +608,19 @@ function normalizeAnalytics(
   const totalApiCalls = readNumber(
     totalsRaw?.total_api_calls ?? r.total_api_calls,
   )
+  const coverageRaw =
+    r.cost_coverage && typeof r.cost_coverage === 'object'
+      ? (r.cost_coverage as Record<string, unknown>)
+      : null
+  const coverageStatus = readString(coverageRaw?.status)
+  const costLabel: DashboardAnalyticsSection['costLabel'] =
+    coverageStatus === 'complete' || coverageStatus === 'partial'
+      ? coverageStatus
+      : 'unavailable'
   const totalCost = ((): number | null => {
+    if (costLabel === 'unavailable') return null
     const candidates = [
+      coverageRaw?.known_estimated_cost_usd,
       totalsRaw?.total_estimated_cost,
       totalsRaw?.total_actual_cost,
       r.estimated_cost_usd,
@@ -628,9 +636,7 @@ function normalizeAnalytics(
   // reasoning are exposed separately for the rich UI.
   const fallbackTotal = readNumber(r.total_tokens)
   const totalTokens =
-    inputTokens + outputTokens > 0
-      ? inputTokens + outputTokens
-      : fallbackTotal
+    inputTokens + outputTokens > 0 ? inputTokens + outputTokens : fallbackTotal
 
   const modelsRaw = Array.isArray(r.by_model)
     ? r.by_model
@@ -649,18 +655,26 @@ function normalizeAnalytics(
       const tokensOut = readNumber(e.output_tokens)
       return {
         id,
-        tokens: tokensIn + tokensOut > 0 ? tokensIn + tokensOut : readNumber(e.tokens),
+        tokens:
+          tokensIn + tokensOut > 0
+            ? tokensIn + tokensOut
+            : readNumber(e.tokens),
         calls: readNumber(e.api_calls ?? e.calls ?? e.requests),
-        cost: readNumber(e.estimated_cost ?? e.cost),
+        cost:
+          costLabel === 'unavailable'
+            ? null
+            : readOptionalNumber(e.estimated_cost ?? e.cost),
         sessions: readNumber(e.sessions),
       }
     })
     .filter(
-      (entry): entry is {
+      (
+        entry,
+      ): entry is {
         id: string
         tokens: number
         calls: number
-        cost: number
+        cost: number | null
         sessions: number
       } => entry !== null,
     )
@@ -682,11 +696,16 @@ function normalizeAnalytics(
         reasoningTokens: readNumber(e.reasoning_tokens),
         sessions: readNumber(e.sessions),
         apiCalls: readNumber(e.api_calls),
-        estimatedCost: readNumber(e.estimated_cost),
+        estimatedCost:
+          costLabel === 'unavailable'
+            ? null
+            : readOptionalNumber(e.estimated_cost),
       }
     })
     .filter(
-      (entry): entry is {
+      (
+        entry,
+      ): entry is {
         day: string
         inputTokens: number
         outputTokens: number
@@ -694,58 +713,9 @@ function normalizeAnalytics(
         reasoningTokens: number
         sessions: number
         apiCalls: number
-        estimatedCost: number
+        estimatedCost: number | null
       } => entry !== null,
     )
-
-  // Cost-coverage trust label. The Hermes Agent confirmed that codex /
-  // anthropic-oauth / minimax sessions report cost 0 because they're
-  // subscription-included, not because they cost zero dollars. Showing
-  // a precise $0.052 with 247M tokens routed through OAuth providers is
-  // misleading. We classify sessions by provider into priced vs
-  // included buckets and surface a coherent label.
-  const SUBSCRIPTION_PROVIDER_PATTERNS = [
-    /(^|[\s\-:/])codex(\b|[-/])/i,
-    /anthropic[-_]?oauth/i,
-    /^claude-(opus|sonnet|haiku)/i, // anthropic OAuth distilled models
-    /minimax/i,
-    /ollama/i,
-    /lmstudio/i,
-    /^pc1-/i,
-    /^pc2-/i,
-  ]
-  const isSubscriptionLike = (modelId: string): boolean =>
-    SUBSCRIPTION_PROVIDER_PATTERNS.some((rx) => rx.test(modelId))
-
-  let pricedSessions = 0
-  let includedSessions = 0
-  for (const m of modelsRaw) {
-    if (!m || typeof m !== 'object') continue
-    const e = m as Record<string, unknown>
-    const id = readString(e.model) || readString(e.id)
-    if (!id) continue
-    const sessions = readNumber(e.sessions)
-    if (sessions <= 0) continue
-    const cost = readNumber(e.estimated_cost)
-    if (cost > 0) {
-      pricedSessions += sessions
-    } else if (isSubscriptionLike(id)) {
-      includedSessions += sessions
-    } else {
-      pricedSessions += sessions // unknown provider, optimistically count
-    }
-  }
-  let costLabel: DashboardAnalyticsSection['costLabel']
-  const totalSessionsLocal = pricedSessions + includedSessions
-  if (totalSessionsLocal === 0) {
-    costLabel = 'unknown'
-  } else if (includedSessions === 0) {
-    costLabel = 'precise'
-  } else if (pricedSessions === 0) {
-    costLabel = 'included'
-  } else {
-    costLabel = 'partial'
-  }
 
   const hasAny = totalTokens > 0 || topModels.length > 0 || daily.length > 0
   return {
@@ -761,6 +731,13 @@ function normalizeAnalytics(
     daily,
     estimatedCostUsd: totalCost,
     costLabel,
+    costCoverage: {
+      totalCalls: readNumber(coverageRaw?.total_calls),
+      completeCalls: readNumber(coverageRaw?.complete_calls),
+      partialCalls: readNumber(coverageRaw?.partial_calls),
+      unavailableCalls: readNumber(coverageRaw?.unavailable_calls),
+      scope: 'provider_generation_estimate',
+    },
     source: hasAny ? 'analytics' : 'unavailable',
   }
 }
@@ -873,16 +850,12 @@ function computeInsights(
   // glance.
   const ops: Array<string> = []
   if (cron && cron.failed > 0) {
-    ops.push(
-      `${cron.failed} failed cron job${cron.failed === 1 ? '' : 's'}`,
-    )
+    ops.push(`${cron.failed} failed cron job${cron.failed === 1 ? '' : 's'}`)
   }
   if (cron && cron.nextRunAt) {
     const nextMs = Date.parse(cron.nextRunAt)
     if (Number.isFinite(nextMs) && nextMs - Date.now() < -7 * 86_400_000) {
-      ops.push(
-        `${cron.total} stale cron job${cron.total === 1 ? '' : 's'}`,
-      )
+      ops.push(`${cron.total} stale cron job${cron.total === 1 ? '' : 's'}`)
     }
   }
   if (
@@ -976,7 +949,9 @@ function computeIncidents(
       severity: 'warn',
       source: 'kanban',
       label: `${kanban.blocked} kanban task${kanban.blocked === 1 ? '' : 's'} blocked`,
-      detail: kanban.topBlocked.map((t) => t.title).join(' · ') || 'blocked cards need attention',
+      detail:
+        kanban.topBlocked.map((t) => t.title).join(' · ') ||
+        'blocked cards need attention',
       href: '/swarm2',
     })
   }
