@@ -13,8 +13,29 @@ import {
   resolveSessionKey,
   shouldBindMainToPortableSession,
 } from '../../server/session-utils'
+import { getLocalMessages, getLocalSession } from '../../server/local-session-store'
+import { projectPersistedChatImages } from '../../server/persisted-chat-attachments'
 import { isAuthenticated } from '@/server/auth-middleware'
-import { getLocalSession, getLocalMessages } from '../../server/local-session-store'
+
+function toLocalHistoryMessage(
+  message: ReturnType<typeof getLocalMessages>[number],
+  index: number,
+) {
+  const projection =
+    message.role === 'user'
+      ? projectPersistedChatImages(message.content)
+      : { text: message.content, attachments: [] }
+  return {
+    id: message.id,
+    role: message.role,
+    content: [{ type: 'text', text: projection.text }],
+    ...(projection.attachments.length > 0
+      ? { attachments: projection.attachments }
+      : {}),
+    timestamp: message.timestamp,
+    historyIndex: index,
+  }
+}
 
 export const Route = createFileRoute('/api/history')({
   server: {
@@ -88,13 +109,7 @@ export const Route = createFileRoute('/api/history')({
             return json({
               sessionKey: 'main',
               sessionId: 'main',
-              messages: localMessages.map((m, index) => ({
-                id: m.id,
-                role: m.role,
-                content: [{ type: 'text', text: m.content }],
-                timestamp: m.timestamp,
-                historyIndex: index,
-              })),
+              messages: localMessages.map(toLocalHistoryMessage),
             })
           }
           let messages: Awaited<ReturnType<typeof getMessages>> = []
@@ -112,13 +127,7 @@ export const Route = createFileRoute('/api/history')({
               return json({
                 sessionKey,
                 sessionId: sessionKey,
-                messages: localMessages.map((m, index) => ({
-                  id: m.id,
-                  role: m.role,
-                  content: [{ type: 'text', text: m.content }],
-                  timestamp: m.timestamp,
-                  historyIndex: index,
-                })),
+                messages: localMessages.map(toLocalHistoryMessage),
               })
             }
           }

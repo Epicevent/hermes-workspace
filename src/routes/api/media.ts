@@ -7,9 +7,15 @@
  */
 import { readFileSync, statSync } from 'node:fs'
 import os from 'node:os'
-import { extname, isAbsolute, resolve as resolvePath } from 'node:path'
+import {
+  extname,
+  isAbsolute,
+  relative,
+  resolve as resolvePath,
+} from 'node:path'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireLocalOrAuth } from '../../server/auth-middleware'
+import { getStateDir } from '../../server/workspace-state-dir'
 
 const MAX_BYTES = 10 * 1024 * 1024
 
@@ -54,6 +60,7 @@ function allowedPrefixes(): Array<string> {
     resolvePath(stateHome, 'cache'),
     resolvePath(stateHome, 'audio_cache'),
     resolvePath(stateHome, 'workspace', 'artifacts'),
+    resolvePath(getStateDir(), 'artifacts'),
     resolvePath(home, 'dispatch'),
     resolvePath(home, 'projects'),
     resolvePath(stateHome, 'projects'),
@@ -69,11 +76,14 @@ function allowedPrefixes(): Array<string> {
   ]
 }
 
-function isAllowed(absPath: string): boolean {
+export function isAllowedMediaPath(absPath: string): boolean {
   return allowedPrefixes().some((prefix) => {
     const normalizedPrefix = resolvePath(prefix)
+    const pathRelativeToPrefix = relative(normalizedPrefix, absPath)
     return (
-      absPath === normalizedPrefix || absPath.startsWith(`${normalizedPrefix}/`)
+      pathRelativeToPrefix === '' ||
+      (!pathRelativeToPrefix.startsWith('..') &&
+        !isAbsolute(pathRelativeToPrefix))
     )
   })
 }
@@ -97,7 +107,7 @@ export const Route = createFileRoute('/api/media')({
           }
 
           const absPath = resolvePath(rawPath)
-          if (!isAllowed(absPath)) {
+          if (!isAllowedMediaPath(absPath)) {
             return new Response('Forbidden path', { status: 403 })
           }
 

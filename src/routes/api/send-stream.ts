@@ -23,6 +23,10 @@ import { openaiChat } from '../../server/openai-compat-api'
 import { streamResponses } from '../../server/responses-api'
 import { selectPortableConversationHistory } from '../../server/portable-history'
 import {
+  appendPersistedChatImages,
+  persistUploadedChatImages,
+} from '../../server/persisted-chat-attachments'
+import {
   SESSIONS_API_UNAVAILABLE_MESSAGE,
   createSession,
   ensureGatewayProbed,
@@ -375,6 +379,31 @@ export const Route = createFileRoute('/api/send-stream')({
           getChatMessage(message, attachments),
           workspaceScope,
         )
+        let persistedChatImages: ReturnType<typeof persistUploadedChatImages>
+        try {
+          persistedChatImages = persistUploadedChatImages(attachments)
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : 'Image attachment persistence failed'
+          return new Response(
+            JSON.stringify({ ok: false, error: errorMessage }),
+            {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          )
+        }
+        const persistedUserMessage = appendPersistedChatImages(
+          message,
+          persistedChatImages,
+        )
+        const persistedScopedMessage = appendPersistedChatImages(
+          scopedMessage,
+          persistedChatImages,
+        )
+        const clientMessageId = readString(body.idempotencyKey)
 
         // Create streaming response using the SHARED server connection
         const encoder = new TextEncoder()
@@ -591,7 +620,7 @@ export const Route = createFileRoute('/api/send-stream')({
                   appendLocalMessage(portableSessionKey, {
                     id: crypto.randomUUID(),
                     role: 'user',
-                    content: typeof body.message === 'string' ? body.message : '',
+                    content: persistedUserMessage,
                     timestamp: Date.now(),
                   })
                   const effectiveHistory = selectPortableConversationHistory(
@@ -1040,6 +1069,11 @@ export const Route = createFileRoute('/api/send-stream')({
                     typeof body.model === 'string' ? body.model : undefined,
                   system_message: thinking,
                   attachments: attachments || undefined,
+                  persist_user_message:
+                    persistedChatImages.length > 0
+                      ? persistedScopedMessage
+                      : undefined,
+                  client_message_id: clientMessageId || undefined,
                 },
                 {
                   signal: abortController.signal,
@@ -1087,10 +1121,18 @@ export const Route = createFileRoute('/api/send-stream')({
                           ? (data.user_message as Record<string, unknown>)
                           : null
                       if (userMessage) {
+                        const userClientId =
+                          typeof userMessage.client_id === 'string'
+                            ? userMessage.client_id
+                            : typeof userMessage.clientId === 'string'
+                              ? userMessage.clientId
+                              : undefined
                         skipPublish ||
                           publishChatEvent('user_message', {
                             message: {
                               id: userMessage.id,
+                              clientId: userClientId,
+                              client_id: userClientId,
                               role: userMessage.role ?? 'user',
                               content: [
                                 {
