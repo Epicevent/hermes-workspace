@@ -296,6 +296,14 @@ describe('buildDashboardOverview', () => {
   it('parses native Hermes analytics shape (totals + by_model + daily)', async () => {
     const fetcher = makeFetcher({
       '/api/analytics/usage': {
+        cost_coverage: {
+          status: 'complete',
+          total_calls: 2760,
+          complete_calls: 2760,
+          partial_calls: 0,
+          unavailable_calls: 0,
+          known_estimated_cost_usd: 0.05,
+        },
         period_days: 30,
         totals: {
           total_input: 245_000_000,
@@ -357,6 +365,7 @@ describe('buildDashboardOverview', () => {
     expect(overview.analytics?.totalApiCalls).toBe(2760)
     expect(overview.analytics?.totalTokens).toBe(245_000_000 + 1_200_000)
     expect(overview.analytics?.estimatedCostUsd).toBe(0.05)
+    expect(overview.analytics?.costLabel).toBe('complete')
     expect(overview.analytics?.topModels.map((m) => m.id)).toEqual([
       'gpt-5.4',
       'claude-opus-4-6',
@@ -384,13 +393,50 @@ describe('buildDashboardOverview', () => {
     })
     const overview = await buildDashboardOverview({ fetcher })
     expect(overview.analytics?.totalTokens).toBe(5_000_000)
-    expect(overview.analytics?.estimatedCostUsd).toBe(12.34)
+    expect(overview.analytics?.estimatedCostUsd).toBeNull()
+    expect(overview.analytics?.costLabel).toBe('unavailable')
+    expect(
+      overview.analytics?.topModels.every((model) => model.cost === null),
+    ).toBe(true)
     expect(overview.analytics?.topModels.map((m) => m.id)).toEqual([
       'opus-4-7',
       'gpt-5.4',
       'sonnet-4-6',
       'gpt-5.5',
     ])
+  })
+
+  it('keeps known partial cost separate from complete coverage', async () => {
+    const fetcher = makeFetcher({
+      '/api/analytics/usage': {
+        totals: {
+          total_input: 100,
+          total_output: 20,
+          total_estimated_cost: 0.001,
+          total_sessions: 1,
+          total_api_calls: 2,
+        },
+        cost_coverage: {
+          status: 'partial',
+          total_calls: 2,
+          complete_calls: 1,
+          partial_calls: 1,
+          unavailable_calls: 0,
+          known_estimated_cost_usd: 0.001,
+        },
+      },
+    })
+
+    const overview = await buildDashboardOverview({ fetcher })
+    expect(overview.analytics?.estimatedCostUsd).toBe(0.001)
+    expect(overview.analytics?.costLabel).toBe('partial')
+    expect(overview.analytics?.costCoverage).toEqual({
+      totalCalls: 2,
+      completeCalls: 1,
+      partialCalls: 1,
+      unavailableCalls: 0,
+      scope: 'provider_generation_estimate',
+    })
   })
 
   it('summarises dashboard kanban board state and blocked cards', async () => {

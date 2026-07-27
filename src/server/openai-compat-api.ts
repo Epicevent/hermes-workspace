@@ -16,7 +16,8 @@ import { CLAUDE_API } from './gateway-capabilities'
  * Resolution order:
  * 1. `HERMES_API_TOKEN` env var
  * 2. `CLAUDE_API_TOKEN` env var (back-compat)
- * 3. Codex OAuth access token from `~/.codex/auth.json`
+ * 3. Codex OAuth access token from `$CODEX_HOME/auth.json` or
+ *    `~/.codex/auth.json`
  */
 export function getBearerToken(): string {
   const fromEnv = process.env.HERMES_API_TOKEN || process.env.CLAUDE_API_TOKEN
@@ -26,7 +27,10 @@ export function getBearerToken(): string {
   // This bridges the gap for users who authenticated via `codex login`
   // but don't have HERMES_API_TOKEN configured.
   try {
-    const codexAuthPath = join(homedir(), '.codex', 'auth.json')
+    const configuredCodexHome = process.env.CODEX_HOME?.trim()
+    const codexAuthPath = configuredCodexHome
+      ? join(configuredCodexHome, 'auth.json')
+      : join(homedir(), '.codex', 'auth.json')
     if (existsSync(codexAuthPath)) {
       const auth = JSON.parse(readFileSync(codexAuthPath, 'utf-8')) as {
         tokens?: { access_token?: string }
@@ -176,8 +180,7 @@ function parseClaudeToolProgressChunk(payload: string): StreamChunkType | null {
     const parsed = JSON.parse(payload) as unknown
     const record = readRecord(parsed)
     if (!record) return null
-    const name =
-      readString(record.tool) || readString(record.name) || 'tool'
+    const name = readString(record.tool) || readString(record.name) || 'tool'
     const emoji = readString(record.emoji)
     const labelText = readString(record.label)
     const label = [emoji, labelText].filter(Boolean).join(' ').trim()
@@ -209,7 +212,9 @@ function parseClaudeToolProgressChunk(payload: string): StreamChunkType | null {
   }
 }
 
-function parseProviderReceipt(value: unknown): Extract<StreamChunkType, { type: 'provider-receipt' }> | null {
+function parseProviderReceipt(
+  value: unknown,
+): Extract<StreamChunkType, { type: 'provider-receipt' }> | null {
   const record = readRecord(value)
   if (!record) return null
   const usage = readRecord(record.usageMetadata)
@@ -232,7 +237,8 @@ function parseProviderReceipt(value: unknown): Extract<StreamChunkType, { type: 
   const responseId = readString(record.responseId)
   const modelVersion = readString(record.modelVersion)
   const finishReason = readString(record.finishReason)
-  if (provider !== 'gemini' || !responseId || !modelVersion || !finishReason) return null
+  if (provider !== 'gemini' || !responseId || !modelVersion || !finishReason)
+    return null
   const configuredModel = readString(record.configuredModel)
   const evidenceSource = readString(record.evidenceSource)
   const hasStableModelEvidence =
@@ -325,7 +331,9 @@ export async function* parseOpenAIStream(
             }>
             usage?: { provider_receipt?: unknown }
           }
-          const providerReceipt = parseProviderReceipt(parsed.usage?.provider_receipt)
+          const providerReceipt = parseProviderReceipt(
+            parsed.usage?.provider_receipt,
+          )
           if (providerReceipt) yield providerReceipt
           const d = parsed.choices?.[0]?.delta
           const content = d?.content || ''

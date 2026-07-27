@@ -11,12 +11,17 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
-function formatCost(usd: number): string {
-  if (!usd || usd <= 0) return '$0'
-  if (usd < 0.01) return '<$0.01'
-  if (usd < 1) return `$${usd.toFixed(3)}`
-  if (usd < 100) return `$${usd.toFixed(2)}`
-  return `$${Math.round(usd).toLocaleString()}`
+export function formatCost(
+  usd: number | null,
+  completeness: 'complete' | 'partial' | 'unavailable',
+): string {
+  if (usd === null || completeness === 'unavailable') return 'Unavailable'
+  const suffix = completeness === 'partial' ? ' partial' : ''
+  if (usd <= 0) return `$0${suffix}`
+  if (usd < 0.01) return `<$0.01${suffix}`
+  if (usd < 1) return `$${usd.toFixed(3)}${suffix}`
+  if (usd < 100) return `$${usd.toFixed(2)}${suffix}`
+  return `$${Math.round(usd).toLocaleString()}${suffix}`
 }
 
 /**
@@ -122,7 +127,7 @@ export function TopModelsCard({
                 <span>
                   {sharePct}% of calls · {m.sessions.toLocaleString()} sessions
                 </span>
-                <span>{formatCost(m.cost)}</span>
+                <span>{formatCost(m.cost, analytics.costLabel)}</span>
               </div>
             </li>
           )

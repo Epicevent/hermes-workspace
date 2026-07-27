@@ -9,8 +9,12 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
-function formatCost(usd: number | null): string {
-  if (usd === null) return '—'
+export function formatCost(
+  usd: number | null,
+  completeness: 'complete' | 'partial' | 'unavailable',
+): string {
+  if (usd === null || completeness === 'unavailable') return 'Cost unavailable'
+  if (completeness === 'partial') return `Partial $${usd.toFixed(2)}`
   if (usd < 0.01) return '<$0.01'
   if (usd < 1) return `$${usd.toFixed(2)}`
   if (usd < 100) return `$${usd.toFixed(1)}`
@@ -60,14 +64,12 @@ export function AnalyticsSummaryCard({
           >
             {formatTokens(analytics.totalTokens)} tok
           </div>
-          {analytics.estimatedCostUsd !== null ? (
-            <div
-              className="text-[9px] font-mono uppercase tracking-[0.1em]"
-              style={{ color: 'var(--theme-muted)' }}
-            >
-              {formatCost(analytics.estimatedCostUsd)}
-            </div>
-          ) : null}
+          <div
+            className="text-[9px] font-mono uppercase tracking-[0.1em]"
+            style={{ color: 'var(--theme-muted)' }}
+          >
+            {formatCost(analytics.estimatedCostUsd, analytics.costLabel)}
+          </div>
         </div>
       </div>
       {!hasData ? (
