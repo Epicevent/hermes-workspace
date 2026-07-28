@@ -45,6 +45,30 @@ export function rewriteLocalMediaSources(content: string): string {
     },
   )
 
+  // Tool-backed Hermes turns can also emit ordinary markdown/HTML pointing at
+  // files they just created under the mounted Workspace root. Those paths are
+  // server filesystem paths, not public web routes. Keep normal site-root URLs
+  // such as /assets/* and /api/* untouched while projecting /workspace/*
+  // through the same authenticated media endpoint used by MEDIA: tokens.
+  const workspaceMarkdownImage = /(!\[[^\]]*\]\()(\/workspace\/[^)\s]+)(\))/g
+  const withWorkspaceMarkdownImages = withHtmlImages.replace(
+    workspaceMarkdownImage,
+    (_match, prefix: string, mediaPath: string, suffix: string) => {
+      const rewritten = rewritePath(mediaPath)
+      return rewritten ? `${prefix}${rewritten}${suffix}` : _match
+    },
+  )
+
+  const workspaceHtmlImage =
+    /(<img\b[^>]*\bsrc=)(["'])(\/workspace\/[^"']+)\2/gi
+  const withWorkspaceHtmlImages = withWorkspaceMarkdownImages.replace(
+    workspaceHtmlImage,
+    (_match, prefix: string, quote: string, mediaPath: string) => {
+      const rewritten = rewritePath(mediaPath)
+      return rewritten ? `${prefix}${quote}${rewritten}${quote}` : _match
+    },
+  )
+
   // Bare `MEDIA:/abs/path` tokens sitting in prose (not already inside image
   // markup — those were rewritten above). Messaging bridges deliver these as
   // native attachments; the web chat previously rendered them as literal text.
@@ -52,20 +76,23 @@ export function rewriteLocalMediaSources(content: string): string {
   // (everything else) so the file actually shows. Remote (http/https) MEDIA
   // tokens are left untouched by rewritePath and stay as-is.
   const bareMedia = /MEDIA:(\/[^\s<>"'`)\]}]+)/g
-  return withHtmlImages.replace(bareMedia, (match, rawPath: string) => {
-    const trail = (rawPath.match(/[.,;:!?]+$/) || [''])[0]
-    const path = trail
-      ? rawPath.slice(0, rawPath.length - trail.length)
-      : rawPath
-    const rewritten = rewritePath(path)
-    if (!rewritten) return match
-    const name = path.split('/').pop() || 'file'
-    const isImage = /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i.test(path)
-    const element = isImage
-      ? `![${name}](${rewritten})`
-      : `[${name}](${rewritten})`
-    return element + trail
-  })
+  return withWorkspaceHtmlImages.replace(
+    bareMedia,
+    (match, rawPath: string) => {
+      const trail = (rawPath.match(/[.,;:!?]+$/) || [''])[0]
+      const path = trail
+        ? rawPath.slice(0, rawPath.length - trail.length)
+        : rawPath
+      const rewritten = rewritePath(path)
+      if (!rewritten) return match
+      const name = path.split('/').pop() || 'file'
+      const isImage = /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i.test(path)
+      const element = isImage
+        ? `![${name}](${rewritten})`
+        : `[${name}](${rewritten})`
+      return element + trail
+    },
+  )
 }
 
 export type MarkdownProps = {

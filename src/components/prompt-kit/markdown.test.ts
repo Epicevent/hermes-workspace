@@ -15,6 +15,32 @@ describe('rewriteLocalMediaSources', () => {
     ).toBe('<img src="/api/media?path=%2Ftmp%2Fcat.png" alt="cat" />')
   })
 
+  it('rewrites a standard markdown image that points into the Workspace root', () => {
+    expect(
+      rewriteLocalMediaSources(
+        '![OC20 LIVE](/workspace/codex_oc20_image_verify.png)',
+      ),
+    ).toBe(
+      '![OC20 LIVE](/api/media?path=%2Fworkspace%2Fcodex_oc20_image_verify.png)',
+    )
+  })
+
+  it('rewrites a standard html image that points into the Workspace root', () => {
+    expect(
+      rewriteLocalMediaSources(
+        '<img src="/workspace/generated.png" alt="generated" />',
+      ),
+    ).toBe(
+      '<img src="/api/media?path=%2Fworkspace%2Fgenerated.png" alt="generated" />',
+    )
+  })
+
+  it('does not reinterpret normal site-root image URLs as local files', () => {
+    const content =
+      '![logo](/assets/logo.png) <img src="/api/media?path=%2Ftmp%2Fa.png" />'
+    expect(rewriteLocalMediaSources(content)).toBe(content)
+  })
+
   it('leaves remote MEDIA URLs untouched', () => {
     expect(
       rewriteLocalMediaSources('![cat](MEDIA:https://example.com/cat.png)'),
