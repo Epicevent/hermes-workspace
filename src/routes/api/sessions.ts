@@ -17,7 +17,7 @@ import {
   deleteLocalSession,
   getLocalSession,
   listLocalSessions,
-  updateLocalSessionTitle,
+  updateLocalSession,
 } from '../../server/local-session-store'
 import { createCapabilityUnavailablePayload } from '@/lib/feature-gates'
 import { parseSessionFolderPath } from '@/lib/session-folder'
@@ -46,7 +46,9 @@ export const Route = createFileRoute('/api/sessions')({
 
           // Merge local portable sessions (Ollama, Atomic Chat, etc.)
           const localSessions = listLocalSessions()
-          const gatewayIds = new Set(gatewaySessions.map((s: any) => s.key || s.id))
+          const gatewayIds = new Set(
+            gatewaySessions.map((s: any) => s.key || s.id),
+          )
           for (const ls of localSessions) {
             if (!gatewayIds.has(ls.id)) {
               gatewaySessions.push({
@@ -60,6 +62,7 @@ export const Route = createFileRoute('/api/sessions')({
                 updatedAt: ls.updatedAt,
                 message_count: ls.messageCount,
                 model: ls.model,
+                folderPath: ls.folderPath ?? null,
                 source: 'local',
               } as any)
             }
@@ -220,7 +223,19 @@ export const Route = createFileRoute('/api/sessions')({
 
           const localSession = getLocalSession(sessionKey)
           if (localSession) {
-            if (label) updateLocalSessionTitle(sessionKey, label)
+            const localUpdates: {
+              title?: string
+              folderPath?: string | null
+            } = {}
+            if (label) localUpdates.title = label
+            if (folderPatch !== undefined) {
+              localUpdates.folderPath = folderPatch
+            }
+            const updatedLocalSession =
+              Object.keys(localUpdates).length > 0
+                ? (updateLocalSession(sessionKey, localUpdates) ?? localSession)
+                : localSession
+            const localTitle = updatedLocalSession.title || sessionKey
             return json({
               ok: true,
               sessionKey,
@@ -228,13 +243,14 @@ export const Route = createFileRoute('/api/sessions')({
               entry: {
                 key: sessionKey,
                 id: sessionKey,
-                title: label || sessionKey,
-                label: label || sessionKey,
-                derivedTitle: label || sessionKey,
-                startedAt: localSession.createdAt,
-                updatedAt: Date.now(),
-                message_count: localSession.messageCount,
-                model: localSession.model,
+                title: localTitle,
+                label: localTitle,
+                derivedTitle: localTitle,
+                startedAt: updatedLocalSession.createdAt,
+                updatedAt: updatedLocalSession.updatedAt,
+                message_count: updatedLocalSession.messageCount,
+                model: updatedLocalSession.model,
+                folderPath: updatedLocalSession.folderPath ?? null,
                 source: 'local',
               },
               updated: true,

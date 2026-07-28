@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const DATA_DIR = join(process.cwd(), '.runtime')
+const DATA_DIR =
+  process.env.HERMES_WORKSPACE_RUNTIME_DIR ?? join(process.cwd(), '.runtime')
 const SESSIONS_FILE = join(DATA_DIR, 'local-sessions.json')
 const MAX_MESSAGES_PER_SESSION = 500
 
@@ -12,6 +13,7 @@ export type LocalSession = {
   createdAt: number
   updatedAt: number
   messageCount: number
+  folderPath: string | null
 }
 
 export type LocalMessage = {
@@ -25,8 +27,8 @@ export type LocalMessage = {
 }
 
 type StoreData = {
-  sessions: Record<string, LocalSession>
-  messages: Record<string, Array<LocalMessage>>
+  sessions: Record<string, LocalSession | undefined>
+  messages: Record<string, Array<LocalMessage> | undefined>
 }
 
 let store: StoreData = { sessions: {}, messages: {} }
@@ -35,8 +37,14 @@ function loadFromDisk(): void {
   try {
     if (existsSync(SESSIONS_FILE)) {
       const raw = readFileSync(SESSIONS_FILE, 'utf-8')
-      const parsed = JSON.parse(raw) as StoreData
+      const parsed = JSON.parse(raw) as Partial<StoreData>
       if (parsed.sessions && parsed.messages) {
+        for (const session of Object.values(parsed.sessions)) {
+          if (!session) continue
+          if (typeof session.folderPath !== 'string') {
+            session.folderPath = null
+          }
+        }
         store = parsed
       }
     }
@@ -45,11 +53,12 @@ function loadFromDisk(): void {
   }
 }
 
-function saveToDisk(): void {
+function saveToDisk(options: { throwOnError?: boolean } = {}): void {
   try {
     if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
     writeFileSync(SESSIONS_FILE, JSON.stringify(store, null, 2))
-  } catch {
+  } catch (error) {
+    if (options.throwOnError) throw error
     // ignore cache write failures
   }
 }
@@ -57,7 +66,9 @@ function saveToDisk(): void {
 loadFromDisk()
 
 export function listLocalSessions(): Array<LocalSession> {
-  return Object.values(store.sessions).sort((a, b) => b.updatedAt - a.updatedAt)
+  return Object.values(store.sessions)
+    .filter((session): session is LocalSession => session !== undefined)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 export function getLocalSession(sessionId: string): LocalSession | null {
@@ -76,6 +87,7 @@ export function ensureLocalSession(
       createdAt: Date.now(),
       updatedAt: Date.now(),
       messageCount: 0,
+      folderPath: null,
     }
     store.messages[sessionId] = []
     saveToDisk()
@@ -87,12 +99,35 @@ export function updateLocalSessionTitle(
   sessionId: string,
   title: string,
 ): void {
+  updateLocalSession(sessionId, { title })
+}
+
+export function updateLocalSession(
+  sessionId: string,
+  updates: { title?: string; folderPath?: string | null },
+): LocalSession | null {
   const session = store.sessions[sessionId]
-  if (session) {
-    session.title = title
-    session.updatedAt = Date.now()
-    saveToDisk()
+  if (!session) return null
+
+  const previous = {
+    title: session.title,
+    folderPath: session.folderPath,
+    updatedAt: session.updatedAt,
   }
+  if (updates.title !== undefined) session.title = updates.title
+  if (updates.folderPath !== undefined) {
+    session.folderPath = updates.folderPath
+  }
+  session.updatedAt = Date.now()
+  try {
+    saveToDisk({ throwOnError: true })
+  } catch (error) {
+    session.title = previous.title
+    session.folderPath = previous.folderPath
+    session.updatedAt = previous.updatedAt
+    throw error
+  }
+  return session
 }
 
 export function touchLocalSession(sessionId: string): void {
@@ -150,10 +185,8 @@ export function appendLocalMessage(
   const messages = store.messages[sessionId] ?? []
   store.messages[sessionId] = messages
   messages.push(message)
-  if (store.messages[sessionId].length > MAX_MESSAGES_PER_SESSION) {
-    store.messages[sessionId] = store.messages[sessionId].slice(
-      -MAX_MESSAGES_PER_SESSION,
-    )
+  if (messages.length > MAX_MESSAGES_PER_SESSION) {
+    store.messages[sessionId] = messages.slice(-MAX_MESSAGES_PER_SESSION)
   }
   session.messageCount = store.messages[sessionId].length
   session.updatedAt = Date.now()

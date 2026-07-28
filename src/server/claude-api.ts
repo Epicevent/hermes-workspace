@@ -24,6 +24,7 @@ import {
   searchSessions as searchDashboardSessions,
   updateSession as updateDashboardSession,
 } from './claude-dashboard-api'
+import { projectPersistedChatImages } from './persisted-chat-attachments'
 
 const _authHeaders = (): Record<string, string> =>
   BEARER_TOKEN ? { Authorization: `Bearer ${BEARER_TOKEN}` } : {}
@@ -296,15 +297,23 @@ export function toChatMessage(
     })
   }
 
-  if (msg.content && msg.role !== 'tool') {
-    content.push({ type: 'text', text: msg.content })
+  const persistedProjection =
+    msg.role === 'user' && typeof msg.content === 'string'
+      ? projectPersistedChatImages(msg.content)
+      : { text: msg.content ?? '', attachments: [] }
+
+  if (persistedProjection.text && msg.role !== 'tool') {
+    content.push({ type: 'text', text: persistedProjection.text })
   }
 
   return {
     id: `msg-${msg.id}`,
     role: msg.role,
     content,
-    text: msg.content || '',
+    text: persistedProjection.text,
+    ...(persistedProjection.attachments.length > 0
+      ? { attachments: persistedProjection.attachments }
+      : {}),
     timestamp: msg.timestamp ? msg.timestamp * 1000 : Date.now(),
     createdAt: msg.timestamp
       ? new Date(msg.timestamp * 1000).toISOString()
@@ -379,6 +388,8 @@ export async function streamChat(
     model?: string
     system_message?: string
     attachments?: Array<Record<string, unknown>>
+    persist_user_message?: string
+    client_message_id?: string
   },
   opts: StreamChatOptions,
 ): Promise<void> {
