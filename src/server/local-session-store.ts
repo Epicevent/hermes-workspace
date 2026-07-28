@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { getStateDir } from './workspace-state-dir'
 
-const DATA_DIR =
-  process.env.HERMES_WORKSPACE_RUNTIME_DIR ?? join(process.cwd(), '.runtime')
+const explicitRuntimeDir = process.env.HERMES_WORKSPACE_RUNTIME_DIR?.trim()
+const DATA_DIR = resolve(explicitRuntimeDir || join(getStateDir(), 'runtime'))
 const SESSIONS_FILE = join(DATA_DIR, 'local-sessions.json')
 const MAX_MESSAGES_PER_SESSION = 500
 
