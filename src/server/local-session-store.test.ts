@@ -71,6 +71,40 @@ describe('local session metadata persistence', () => {
     })
   })
 
+  it('refreshes stale module projections and preserves metadata across writers', async () => {
+    const runtimeDir = mkdtempSync(join(tmpdir(), 'hermes-local-session-'))
+    tempDirs.push(runtimeDir)
+    vi.stubEnv('HERMES_WORKSPACE_RUNTIME_DIR', runtimeDir)
+
+    const listingModule = await import('./local-session-store')
+    listingModule.ensureLocalSession('shared-1', 'gemini-3.6-flash')
+
+    vi.resetModules()
+    const patchModule = await import('./local-session-store')
+    patchModule.updateLocalSession('shared-1', {
+      folderPath: 'persisted/from-patch',
+    })
+
+    expect(listingModule.getLocalSession('shared-1')).toMatchObject({
+      folderPath: 'persisted/from-patch',
+    })
+
+    listingModule.appendLocalMessage('shared-1', {
+      id: 'message-1',
+      role: 'assistant',
+      content: 'stored response',
+      timestamp: 123,
+    })
+
+    vi.resetModules()
+    const reloadedStore = await import('./local-session-store')
+    expect(reloadedStore.getLocalSession('shared-1')).toMatchObject({
+      folderPath: 'persisted/from-patch',
+      messageCount: 1,
+    })
+    expect(reloadedStore.getLocalMessages('shared-1')).toHaveLength(1)
+  })
+
   it('persists clearing a local session folder as null', async () => {
     const runtimeDir = mkdtempSync(join(tmpdir(), 'hermes-local-session-'))
     tempDirs.push(runtimeDir)
