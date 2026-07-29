@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join, resolve } from 'node:path'
 import { getStateDir } from './workspace-state-dir'
 
@@ -32,47 +41,70 @@ type StoreData = {
   messages: Record<string, Array<LocalMessage> | undefined>
 }
 
-let store: StoreData = { sessions: {}, messages: {} }
+function emptyStore(): StoreData {
+  return { sessions: {}, messages: {} }
+}
 
-function loadFromDisk(): void {
+let store: StoreData = emptyStore()
+
+function refreshFromDisk(): void {
   try {
-    if (existsSync(SESSIONS_FILE)) {
-      const raw = readFileSync(SESSIONS_FILE, 'utf-8')
-      const parsed = JSON.parse(raw) as Partial<StoreData>
-      if (parsed.sessions && parsed.messages) {
-        for (const session of Object.values(parsed.sessions)) {
-          if (!session) continue
-          if (typeof session.folderPath !== 'string') {
-            session.folderPath = null
-          }
-        }
-        store = parsed
+    if (!existsSync(SESSIONS_FILE)) {
+      if (!existsSync(DATA_DIR) || statSync(DATA_DIR).isDirectory()) {
+        store = emptyStore()
       }
+      return
+    }
+
+    const raw = readFileSync(SESSIONS_FILE, 'utf-8')
+    const parsed = JSON.parse(raw) as Partial<StoreData>
+    if (parsed.sessions && parsed.messages) {
+      for (const session of Object.values(parsed.sessions)) {
+        if (!session) continue
+        if (typeof session.folderPath !== 'string') {
+          session.folderPath = null
+        }
+      }
+      store = parsed as StoreData
     }
   } catch {
-    // ignore corrupt local cache
+    // Keep the last-known-good in-memory projection when the cache cannot be
+    // read. Metadata writes still fail closed in saveToDisk below.
   }
 }
 
 function saveToDisk(options: { throwOnError?: boolean } = {}): void {
+  let temporaryFile: string | null = null
   try {
     if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
-    writeFileSync(SESSIONS_FILE, JSON.stringify(store, null, 2))
+    temporaryFile = `${SESSIONS_FILE}.${process.pid}.${randomUUID()}.tmp`
+    writeFileSync(temporaryFile, JSON.stringify(store, null, 2))
+    renameSync(temporaryFile, SESSIONS_FILE)
+    temporaryFile = null
   } catch (error) {
+    if (temporaryFile && existsSync(temporaryFile)) {
+      try {
+        unlinkSync(temporaryFile)
+      } catch {
+        // Best-effort cleanup only; preserve the original write error.
+      }
+    }
     if (options.throwOnError) throw error
     // ignore cache write failures
   }
 }
 
-loadFromDisk()
+refreshFromDisk()
 
 export function listLocalSessions(): Array<LocalSession> {
+  refreshFromDisk()
   return Object.values(store.sessions)
     .filter((session): session is LocalSession => session !== undefined)
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 export function getLocalSession(sessionId: string): LocalSession | null {
+  refreshFromDisk()
   return store.sessions[sessionId] ?? null
 }
 
@@ -80,6 +112,7 @@ export function ensureLocalSession(
   sessionId: string,
   model?: string,
 ): LocalSession {
+  refreshFromDisk()
   if (!store.sessions[sessionId]) {
     store.sessions[sessionId] = {
       id: sessionId,
@@ -107,6 +140,7 @@ export function updateLocalSession(
   sessionId: string,
   updates: { title?: string; folderPath?: string | null },
 ): LocalSession | null {
+  refreshFromDisk()
   const session = store.sessions[sessionId]
   if (!session) return null
 
@@ -132,17 +166,23 @@ export function updateLocalSession(
 }
 
 export function touchLocalSession(sessionId: string): void {
+  refreshFromDisk()
   const session = store.sessions[sessionId]
-  if (session) session.updatedAt = Date.now()
+  if (session) {
+    session.updatedAt = Date.now()
+    saveToDisk()
+  }
 }
 
 export function deleteLocalSession(sessionId: string): void {
+  refreshFromDisk()
   delete store.sessions[sessionId]
   delete store.messages[sessionId]
   saveToDisk()
 }
 
 export function getLocalMessages(sessionId: string): Array<LocalMessage> {
+  refreshFromDisk()
   return store.messages[sessionId] ?? []
 }
 
@@ -182,7 +222,18 @@ export function appendLocalMessage(
   sessionId: string,
   message: LocalMessage,
 ): void {
-  const session = ensureLocalSession(sessionId)
+  refreshFromDisk()
+  const session =
+    store.sessions[sessionId] ??
+    (store.sessions[sessionId] = {
+      id: sessionId,
+      title: null,
+      model: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messageCount: 0,
+      folderPath: null,
+    })
   const messages = store.messages[sessionId] ?? []
   store.messages[sessionId] = messages
   messages.push(message)
@@ -191,14 +242,5 @@ export function appendLocalMessage(
   }
   session.messageCount = store.messages[sessionId].length
   session.updatedAt = Date.now()
-  scheduleSave()
-}
-
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-function scheduleSave(): void {
-  if (saveTimer) return
-  saveTimer = setTimeout(() => {
-    saveTimer = null
-    saveToDisk()
-  }, 2000)
+  saveToDisk()
 }
