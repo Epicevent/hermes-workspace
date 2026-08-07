@@ -315,6 +315,19 @@ export const Route = createFileRoute('/api/send-stream')({
           typeof body.thinking === 'string' ? body.thinking : undefined
         const attachments = normalizeAttachments(body.attachments)
         const history = normalizePortableHistory(body.history)
+        const kwrag = body.kwrag
+        if (
+          kwrag !== undefined &&
+          (kwrag === null || typeof kwrag !== 'object' || Array.isArray(kwrag))
+        ) {
+          return new Response(
+            JSON.stringify({ ok: false, error: 'invalid explicit Kakao retrieval request' }),
+            {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          )
+        }
         if (!message.trim() && (!attachments || attachments.length === 0)) {
           return new Response(
             JSON.stringify({ ok: false, error: 'message required' }),
@@ -1074,6 +1087,7 @@ export const Route = createFileRoute('/api/send-stream')({
                       ? persistedScopedMessage
                       : undefined,
                   client_message_id: clientMessageId || undefined,
+                  kwrag: kwrag as Record<string, unknown> | undefined,
                 },
                 {
                   signal: abortController.signal,
