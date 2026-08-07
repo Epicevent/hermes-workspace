@@ -4,6 +4,13 @@ import { readResolvedSessionHeaders } from '@/lib/send-stream-session-headers'
 import { useChatStore } from '@/stores/chat-store'
 import { pushActivity } from '@/components/inspector/activity-store'
 
+export type ExplicitKakaoRequest = {
+  query: string
+  corpus: 'kakao'
+  expected_source_generation?: string
+  expected_index_manifest?: string
+}
+
 /**
  * Determine whether a stream-resolved session key change should trigger
  * onSessionResolved (which navigates the route). Only bootstrap keys
@@ -802,6 +809,7 @@ export function useStreamingMessage(options: UseStreamingMessageOptions = {}) {
       attachments?: Array<ChatAttachment>
       idempotencyKey?: string
       model?: string
+      kwrag?: ExplicitKakaoRequest
     }) => {
       if (eventSourceRef.current) {
         // Preserve in-progress response as a partial message before aborting
@@ -871,6 +879,7 @@ export function useStreamingMessage(options: UseStreamingMessageOptions = {}) {
             attachments: params.attachments,
             idempotencyKey: params.idempotencyKey ?? crypto.randomUUID(),
             model: params.model || undefined,
+            kwrag: params.kwrag,
             locale:
               typeof window !== 'undefined'
                 ? localStorage.getItem('hermes-workspace-locale') || 'en'

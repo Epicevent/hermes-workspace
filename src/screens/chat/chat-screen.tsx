@@ -54,6 +54,7 @@ import { useRealtimeChatHistory } from './hooks/use-realtime-chat-history'
 import { snapshotOptimisticUserMessages } from './hooks/optimistic-message-reinject'
 import { useSmoothStreamingText } from './hooks/use-smooth-streaming-text'
 import { useStreamingMessage } from './hooks/use-streaming-message'
+import type { ExplicitKakaoRequest } from './hooks/use-streaming-message'
 import { useActiveRunCheck } from './hooks/use-active-run-check'
 import { useChatMobile } from './hooks/use-chat-mobile'
 import { useChatSessions } from './hooks/use-chat-sessions'
@@ -516,6 +517,11 @@ export function ChatScreen({
   // Tracks whether the user has explicitly picked a thinking level for this session.
   // A missing/absent sessionStorage key means we should fall back to the Hermes config default.
   const thinkingInitializedByUserRef = useRef(false)
+  const [kakaoRetrievalEnabled, setKakaoRetrievalEnabled] = useState(false)
+  const kakaoRetrievalEnabledRef = useRef(false)
+  useEffect(() => {
+    kakaoRetrievalEnabledRef.current = kakaoRetrievalEnabled
+  }, [kakaoRetrievalEnabled])
   useEffect(() => {
     if (typeof window === 'undefined') return
     const key = `claude-thinking-${activeFriendlyId || 'new'}`
@@ -2047,6 +2053,9 @@ export function ChatScreen({
         fastMode,
         model: currentModel || undefined,
         idempotencyKey: optimisticClientId || crypto.randomUUID(),
+        kwrag: kakaoRetrievalEnabledRef.current
+          ? ({ query: enrichedBody, corpus: 'kakao' } satisfies ExplicitKakaoRequest)
+          : undefined,
       }).catch((err: unknown) => {
         const messageText = err instanceof Error ? err.message : String(err)
         if (import.meta.env.DEV) {
@@ -2918,6 +2927,8 @@ export function ChatScreen({
               focusKey={`${isNewChat ? 'new' : activeFriendlyId}:${activeCanonicalKey ?? ''}`}
               thinkingLevel={thinkingLevel}
               onThinkingLevelChange={handleThinkingLevelChange}
+              kakaoRetrievalEnabled={kakaoRetrievalEnabled}
+              onToggleKakaoRetrieval={setKakaoRetrievalEnabled}
             />
           ) : null}
         </main>
