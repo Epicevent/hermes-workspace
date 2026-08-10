@@ -7,8 +7,6 @@ import { pushActivity } from '@/components/inspector/activity-store'
 export type ExplicitKakaoRequest = {
   query: string
   corpus: 'kakao'
-  expected_source_generation?: string
-  expected_index_manifest?: string
 }
 
 /**
