@@ -4,11 +4,12 @@ import { readResolvedSessionHeaders } from '@/lib/send-stream-session-headers'
 import { useChatStore } from '@/stores/chat-store'
 import { pushActivity } from '@/components/inspector/activity-store'
 
-export type ExplicitKakaoRequest = {
-  query: string
-  corpus: 'kakao'
-  expected_source_generation?: string
-  expected_index_manifest?: string
+export type ExplicitRagRequest = {
+  enabled: true
+  scope?: {
+    sources?: string[]
+    rooms?: Array<{ source: string; roomId: string }>
+  }
 }
 
 /**
@@ -809,7 +810,7 @@ export function useStreamingMessage(options: UseStreamingMessageOptions = {}) {
       attachments?: Array<ChatAttachment>
       idempotencyKey?: string
       model?: string
-      kwrag?: ExplicitKakaoRequest
+      rag?: ExplicitRagRequest
     }) => {
       if (eventSourceRef.current) {
         // Preserve in-progress response as a partial message before aborting
@@ -879,7 +880,7 @@ export function useStreamingMessage(options: UseStreamingMessageOptions = {}) {
             attachments: params.attachments,
             idempotencyKey: params.idempotencyKey ?? crypto.randomUUID(),
             model: params.model || undefined,
-            kwrag: params.kwrag,
+            rag: params.rag,
             locale:
               typeof window !== 'undefined'
                 ? localStorage.getItem('hermes-workspace-locale') || 'en'

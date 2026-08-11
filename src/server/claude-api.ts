@@ -390,6 +390,7 @@ export async function streamChat(
     attachments?: Array<Record<string, unknown>>
     persist_user_message?: string
     client_message_id?: string
+    rag?: Record<string, unknown>
     kwrag?: Record<string, unknown>
   },
   opts: StreamChatOptions,
