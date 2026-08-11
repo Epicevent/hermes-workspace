@@ -315,13 +315,26 @@ export const Route = createFileRoute('/api/send-stream')({
           typeof body.thinking === 'string' ? body.thinking : undefined
         const attachments = normalizeAttachments(body.attachments)
         const history = normalizePortableHistory(body.history)
+        const rag = body.rag
         const kwrag = body.kwrag
+        if (
+          rag !== undefined &&
+          (rag === null || typeof rag !== 'object' || Array.isArray(rag))
+        ) {
+          return new Response(
+            JSON.stringify({ ok: false, error: 'invalid RAG request' }),
+            {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          )
+        }
         if (
           kwrag !== undefined &&
           (kwrag === null || typeof kwrag !== 'object' || Array.isArray(kwrag))
         ) {
           return new Response(
-            JSON.stringify({ ok: false, error: 'invalid explicit Kakao retrieval request' }),
+            JSON.stringify({ ok: false, error: 'invalid legacy RAG request' }),
             {
               status: 400,
               headers: { 'Content-Type': 'application/json' },
@@ -1087,6 +1100,7 @@ export const Route = createFileRoute('/api/send-stream')({
                       ? persistedScopedMessage
                       : undefined,
                   client_message_id: clientMessageId || undefined,
+                  rag: rag as Record<string, unknown> | undefined,
                   kwrag: kwrag as Record<string, unknown> | undefined,
                 },
                 {

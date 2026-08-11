@@ -91,8 +91,8 @@ type ChatComposerProps = {
   onNewSession?: () => void
   onToggleWebSearch?: (enabled: boolean) => void
   webSearchEnabled?: boolean
-  onToggleKakaoRetrieval?: (enabled: boolean) => void
-  kakaoRetrievalEnabled?: boolean
+  onToggleRag?: (enabled: boolean) => void
+  ragEnabled?: boolean
   /** Current thinking level for this session */
   thinkingLevel?: ThinkingLevel
   /** Called when user changes thinking level */
@@ -879,8 +879,8 @@ function ChatComposerComponent({
   onNewSession,
   onToggleWebSearch: _onToggleWebSearch,
   webSearchEnabled,
-  onToggleKakaoRetrieval,
-  kakaoRetrievalEnabled = false,
+  onToggleRag,
+  ragEnabled = false,
   thinkingLevel: externalThinkingLevel,
   onThinkingLevelChange,
   onAbort,
@@ -2834,20 +2834,20 @@ function ChatComposerComponent({
                         <div className="flex flex-wrap items-start gap-2">
                           <button
                             type="button"
-                            aria-pressed={kakaoRetrievalEnabled}
+                            aria-pressed={ragEnabled}
                             onClick={() =>
-                              onToggleKakaoRetrieval?.(!kakaoRetrievalEnabled)
+                              onToggleRag?.(!ragEnabled)
                             }
                             disabled={disabled}
                             className={cn(
                               'inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                              kakaoRetrievalEnabled
+                              ragEnabled
                                 ? 'bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100'
                                 : 'bg-primary-100/70 text-primary-600 hover:bg-primary-200/80 dark:hover:bg-primary-800/60',
                             )}
-                            title="Explicit Kakao context for the next turn"
+                            title="Use RAG context for the next turn"
                           >
-                            Kakao context {kakaoRetrievalEnabled ? 'on' : 'off'}
+                            RAG context {ragEnabled ? 'on' : 'off'}
                           </button>
                           <div
                             className="relative flex min-w-0 items-center"
