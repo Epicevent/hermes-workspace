@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-ARG HERMES_AGENT_BASE=ghcr.io/epicevent/hermes-jitech@sha256:5f34408167506700d475ec98ba15d4a31fef5b66f139bba067e70260db471309
+ARG HERMES_AGENT_BASE=ghcr.io/epicevent/hermes-jitech@sha256:ffec70addf8bfdf2f0622d5c1893508258c7328ad5d22c1bc7593d701080868a
 
 FROM node:22-slim AS build
 RUN corepack enable && apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
